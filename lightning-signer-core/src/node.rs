@@ -1567,6 +1567,14 @@ impl Node {
         };
         Ok((hash, invoice_state, invoice_hash))
     }
+
+    ///Get the balance
+    pub fn get_channel_balance(&self) -> u64{
+	// This is hardcoded.
+	//TODO Need to get the balance by looping over all channels and aggregating the amount in each channel that is due to us.
+	1
+    }
+
 }
 
 fn find_channel_with_funding_outpoint(

@@ -167,6 +167,11 @@ impl RootHandler {
         let channel_id = ChannelId::new(&nonce);
         channel_id
     }
+
+    pub fn get_channel_balance(&self) -> u64{
+        let balance = self.node.get_channel_balance();
+        balance
+    }
 }
 
 impl Handler for RootHandler {
