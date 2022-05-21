@@ -1606,6 +1606,7 @@ pub trait NodeMonitor {
 
 impl NodeMonitor for Node {
     // TODO - lock while we sum so channels can't change until we are done
+<<<<<<< HEAD
     fn channel_balance(&self) -> ChannelBalance {
         let mut sum = ChannelBalance::zero();
         let channels_lock = self.channels.lock().unwrap();
@@ -1613,7 +1614,7 @@ impl NodeMonitor for Node {
             let slot = slot_arc.lock().unwrap();
             match &*slot {
                 ChannelSlot::Ready(chan) => {
-                    sum.accumulate(&chan.balance());
+                    sum.accumulate(&chan.balance())
                 }
                 ChannelSlot::Stub(_stub) => {
                     // ignore stubs ...
@@ -1862,6 +1863,7 @@ mod tests {
         let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
+        assert_eq!(node.get_channel_balance(), 3_000_000);
         // TODO check currency matches
         let preimage = PaymentPreimage([0; 32]);
         let hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
@@ -1892,6 +1894,7 @@ mod tests {
             Ok(())
         })
         .unwrap();
+        assert_eq!(node.get_channel_balance(), 3_000_000 - 110);
     }
 
     #[test]
