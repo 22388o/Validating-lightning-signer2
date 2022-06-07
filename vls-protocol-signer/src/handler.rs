@@ -26,7 +26,7 @@ use lightning_signer::lightning::ln::chan_utils::{
     derive_public_revocation_key, ChannelPublicKeys,
 };
 use lightning_signer::lightning::ln::PaymentHash;
-use lightning_signer::node::{Node, NodeConfig, SpendType};
+use lightning_signer::node::{Node, NodeConfig, SpendType, NodeMonitor};
 use lightning_signer::persist::Persist;
 use lightning_signer::policy::filter::PolicyFilter;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};

@@ -1568,12 +1568,30 @@ impl Node {
         Ok((hash, invoice_state, invoice_hash))
     }
 
-    ///Get the balance
-    pub fn get_channel_balance(&self) -> u64{
-	// This is hardcoded.
-	//TODO Need to get the balance by looping over all channels and aggregating the amount in each channel that is due to us.
-	1
-    }
+}
+
+/// Trait to monitor read-only features of Node
+pub trait NodeMonitor{
+	///Get the balance
+	fn get_channel_balance(&self)-> u64;
+}
+
+impl NodeMonitor for Node{
+	// TODO - lock while we sum so channels can't change until we are done
+	fn get_channel_balance(&self) -> u64{
+		let mut sum = 0;
+		let channels_lock = self.channels.lock().unwrap();
+		for (_, slot_arc) in channels_lock.iter() {
+			let slot = slot_arc.lock().unwrap();
+			match &*slot {
+			    ChannelSlot::Ready(chan) => sum += 1,
+			    ChannelSlot::Stub(_stub) => {
+				// ignore stubs ...
+				}
+			}
+		}
+		sum
+	}
 
 }
 
