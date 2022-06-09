@@ -1579,17 +1579,23 @@ pub trait NodeMonitor{
 impl NodeMonitor for Node{
 	// TODO - lock while we sum so channels can't change until we are done
 	fn get_channel_balance(&self) -> u64{
-		let mut sum = 0;
+		let mut sum = 2;
+		info!("before lock");
 		let channels_lock = self.channels.lock().unwrap();
+		info!("after lock");
 		for (_, slot_arc) in channels_lock.iter() {
 			let slot = slot_arc.lock().unwrap();
 			match &*slot {
-			    ChannelSlot::Ready(chan) => sum += 1,
+			    ChannelSlot::Ready(chan) => {
+			    sum += 1;
+			    info!("sum + 1");
+			    },
 			    ChannelSlot::Stub(_stub) => {
 				// ignore stubs ...
 				}
 			}
 		}
+		info!("sum output- ");
 		sum
 	}
 
