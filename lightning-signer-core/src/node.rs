@@ -1855,22 +1855,20 @@ mod tests {
 
         {
             let mut state = node.state.lock().unwrap();
-            assert!(state
-                .validate_and_apply_payments(
-                    &channel_id,
-                    &Map::new(),
-                    &vec![(hash, 11_000)].into_iter().collect(),
-                    &Default::default(),
-                    invoice_validator.clone()
-                )
-                .is_ok());
+            assert_status_ok!(state.validate_and_apply_payments(
+                &channel_id,
+                &Map::new(),
+                &vec![(hash, 110)].into_iter().collect(),
+                &Default::default(),
+                invoice_validator.clone()
+            ));
         }
         node.with_ready_channel(&channel_id, |chan| {
             chan.htlcs_fulfilled(vec![preimage]);
-            assert_eq!(node.get_channel_balance(), 3_000_000 - 11);
             Ok(())
         })
         .unwrap();
+        assert_eq!(node.get_channel_balance(), 3_000_000 - 110);
     }
 
     #[test]
