@@ -1579,7 +1579,7 @@ pub trait NodeMonitor{
 impl NodeMonitor for Node{
 	// TODO - lock while we sum so channels can't change until we are done
 	fn get_channel_balance(&self) -> u64{
-		let mut sum = 2;
+		let mut sum = 0;
 		info!("before lock");
 		let channels_lock = self.channels.lock().unwrap();
 		info!("after lock");
@@ -1587,8 +1587,8 @@ impl NodeMonitor for Node{
 			let slot = slot_arc.lock().unwrap();
 			match &*slot {
 			    ChannelSlot::Ready(chan) => {
-			    sum += 1;
-			    info!("sum + 1");
+			    sum += chan.claimable_balance();
+			    info!("sum ++");
 			    },
 			    ChannelSlot::Stub(_stub) => {
 				// ignore stubs ...
@@ -1839,6 +1839,7 @@ mod tests {
         let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
+        assert_eq!(node.get_channel_balance(), 3_000_000);
         // TODO check currency matches
         let preimage = PaymentPreimage([0; 32]);
         let hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
@@ -1860,7 +1861,7 @@ mod tests {
                 .validate_and_apply_payments(
                     &channel_id,
                     &Map::new(),
-                    &vec![(hash, 110)].into_iter().collect(),
+                    &vec![(hash, 11_000)].into_iter().collect(),
                     &Default::default(),
                     invoice_validator.clone()
                 )
@@ -1868,6 +1869,7 @@ mod tests {
         }
         node.with_ready_channel(&channel_id, |chan| {
             chan.htlcs_fulfilled(vec![preimage]);
+            assert_eq!(node.get_channel_balance(), 3_000_000 - 11);
             Ok(())
         })
         .unwrap();
@@ -1878,6 +1880,7 @@ mod tests {
         let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
+
         let preimage = PaymentPreimage([0; 32]);
         let hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
 
@@ -1905,6 +1908,7 @@ mod tests {
                 Err(unbalanced_error(vec![hash]))
             );
         }
+
     }
 
     #[test]

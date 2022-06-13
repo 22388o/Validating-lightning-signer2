@@ -745,6 +745,47 @@ impl EnforcementState {
 
         BalanceDelta(cur_bal, new_bal)
     }
+
+    ///The claimable balance in a channel.
+    pub fn claimable_balance<T: PreimageMap>(
+        &self,
+        preimage_map: &T,
+        channel_setup: &ChannelSetup,
+    ) -> u64 {
+
+        // Our balance in the holder commitment tx
+        let cur_holder_bal = self.current_holder_commit_info.as_ref().map(|tx| {
+            tx.claimable_balance(
+                preimage_map,
+                channel_setup.is_outbound,
+                channel_setup.channel_value_sat,
+            )
+        });
+        // Our balance in the counterparty commitment tx
+        let cur_cp_bal = self.current_counterparty_commit_info.as_ref().map(|tx| {
+            tx.claimable_balance(
+                preimage_map,
+                channel_setup.is_outbound,
+                channel_setup.channel_value_sat,
+            )
+        });
+        // Our overall balance is the lower of the two
+        let cur_bal_opt = min_opt(cur_holder_bal, cur_cp_bal);
+
+        // If this is the first commitment, we will have no current balance.
+        // We will use our funding amount, or zero if we are not the funder.
+        let cur_bal = cur_bal_opt.unwrap_or_else(|| self.initial_holder_value);
+
+        log::debug!(
+            "balance {} --- cur h {} c {} ",
+            cur_bal,
+            self.current_holder_commit_info.is_some(),
+            self.current_counterparty_commit_info.is_some(),
+
+        );
+
+        cur_bal
+    }
 }
 
 /// Claimable balance before and after a new commitment tx, in satoshi

@@ -1347,6 +1347,13 @@ impl Channel {
 
         // self.monitor.add_funding(tx, vout);
     }
+
+    /// Get the balance
+    pub fn claimable_balance(&self) -> u64 {
+		let node = self.get_node();
+		let state = node.get_state();
+		self.enforcement_state.claimable_balance(&*state, &self.setup)
+	}
 }
 
 // Phase 1
