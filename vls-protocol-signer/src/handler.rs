@@ -26,7 +26,7 @@ use lightning_signer::lightning::ln::chan_utils::{
     derive_public_revocation_key, ChannelPublicKeys,
 };
 use lightning_signer::lightning::ln::PaymentHash;
-use lightning_signer::node::{Node, NodeConfig, SpendType, NodeMonitor};
+use lightning_signer::node::{Node, NodeConfig, NodeMonitor, SpendType};
 use lightning_signer::persist::Persist;
 use lightning_signer::policy::filter::PolicyFilter;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
@@ -168,7 +168,7 @@ impl RootHandler {
         channel_id
     }
 
-    pub fn get_channel_balance(&self) -> u64{
+    pub fn get_channel_balance(&self) -> u64 {
         let balance = self.node.get_channel_balance();
         balance
     }

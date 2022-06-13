@@ -96,7 +96,11 @@ fn main() -> ! {
         disp.clear_screen();
         let mut message_d = format!("{:?}", message);
         message_d.truncate(20);
-        disp.show_texts(&[format!("req # {}", sequence), message_d.clone(), format!("The current balance\nis {}",root_handler.get_channel_balance())]);
+        disp.show_texts(&[
+            format!("req # {}", sequence),
+            message_d.clone(),
+            format!("The current balance\nis {}", root_handler.get_channel_balance()),
+        ]);
         let start = timer1.now();
         let reply = if dbid > 0 {
             let handler = root_handler.for_new_client(0, dummy_peer.clone(), dbid);

@@ -1567,38 +1567,36 @@ impl Node {
         };
         Ok((hash, invoice_state, invoice_hash))
     }
-
 }
 
 /// Trait to monitor read-only features of Node
-pub trait NodeMonitor{
-	///Get the balance
-	fn get_channel_balance(&self)-> u64;
+pub trait NodeMonitor {
+    ///Get the balance
+    fn get_channel_balance(&self) -> u64;
 }
 
-impl NodeMonitor for Node{
-	// TODO - lock while we sum so channels can't change until we are done
-	fn get_channel_balance(&self) -> u64{
-		let mut sum = 0;
-		info!("before lock");
-		let channels_lock = self.channels.lock().unwrap();
-		info!("after lock");
-		for (_, slot_arc) in channels_lock.iter() {
-			let slot = slot_arc.lock().unwrap();
-			match &*slot {
-			    ChannelSlot::Ready(chan) => {
-			    sum += chan.claimable_balance();
-			    info!("sum ++");
-			    },
-			    ChannelSlot::Stub(_stub) => {
-				// ignore stubs ...
-				}
-			}
-		}
-		info!("sum output- ");
-		sum
-	}
-
+impl NodeMonitor for Node {
+    // TODO - lock while we sum so channels can't change until we are done
+    fn get_channel_balance(&self) -> u64 {
+        let mut sum = 0;
+        info!("before lock");
+        let channels_lock = self.channels.lock().unwrap();
+        info!("after lock");
+        for (_, slot_arc) in channels_lock.iter() {
+            let slot = slot_arc.lock().unwrap();
+            match &*slot {
+                ChannelSlot::Ready(chan) => {
+                    sum += chan.claimable_balance();
+                    info!("sum ++");
+                }
+                ChannelSlot::Stub(_stub) => {
+                    // ignore stubs ...
+                }
+            }
+        }
+        info!("sum output- ");
+        sum
+    }
 }
 
 fn find_channel_with_funding_outpoint(
@@ -1908,7 +1906,6 @@ mod tests {
                 Err(unbalanced_error(vec![hash]))
             );
         }
-
     }
 
     #[test]

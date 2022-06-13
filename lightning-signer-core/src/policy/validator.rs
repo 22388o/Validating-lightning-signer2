@@ -752,7 +752,6 @@ impl EnforcementState {
         preimage_map: &T,
         channel_setup: &ChannelSetup,
     ) -> u64 {
-
         // Our balance in the holder commitment tx
         let cur_holder_bal = self.current_holder_commit_info.as_ref().map(|tx| {
             tx.claimable_balance(
@@ -781,7 +780,6 @@ impl EnforcementState {
             cur_bal,
             self.current_holder_commit_info.is_some(),
             self.current_counterparty_commit_info.is_some(),
-
         );
 
         cur_bal
