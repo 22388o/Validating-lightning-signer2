@@ -1498,6 +1498,11 @@ impl Node {
         self.tracker.lock().unwrap()
     }
 
+    ///Height of chain
+    pub fn get_chain_height(&self) -> u32 {
+		self.tracker.lock().unwrap().height()
+    }
+
     // Process payment preimages for offered HTLCs.
     // Any invoice with a payment hash that matches a preimage is marked
     // as paid, so that the offered HTLC can be removed and our balance
@@ -1587,14 +1592,12 @@ impl NodeMonitor for Node {
             match &*slot {
                 ChannelSlot::Ready(chan) => {
                     sum += chan.claimable_balance();
-                    info!("sum ++");
                 }
                 ChannelSlot::Stub(_stub) => {
                     // ignore stubs ...
                 }
             }
         }
-        info!("sum output- ");
         sum
     }
 }

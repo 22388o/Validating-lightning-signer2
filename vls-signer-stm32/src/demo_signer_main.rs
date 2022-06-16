@@ -99,7 +99,8 @@ fn main() -> ! {
         disp.show_texts(&[
             format!("req # {}", sequence),
             message_d.clone(),
-            format!("The current balance\nis {}", root_handler.get_channel_balance()),
+            format!("The current balance\nis {}.\n", root_handler.get_channel_balance()),
+            format!("The height is {}", root_handler.get_chain_height()),
         ]);
         let start = timer1.now();
         let reply = if dbid > 0 {
