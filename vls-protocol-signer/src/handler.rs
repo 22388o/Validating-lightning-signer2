@@ -20,7 +20,7 @@ use lightning_signer::bitcoin::util::bip32::{ChildNumber, KeySource};
 use lightning_signer::bitcoin::util::psbt::PartiallySignedTransaction;
 use lightning_signer::bitcoin::{OutPoint, Transaction, Witness};
 use lightning_signer::channel::{
-    ChannelBase, ChannelId, ChannelSetup, CommitmentType, TypedSignature,
+    ChannelBalance, ChannelBase, ChannelId, ChannelSetup, CommitmentType, TypedSignature,
 };
 use lightning_signer::lightning::ln::chan_utils::{
     derive_public_revocation_key, ChannelPublicKeys,
@@ -168,14 +168,13 @@ impl RootHandler {
         channel_id
     }
 
-    pub fn get_channel_balance(&self) -> u64 {
-        let balance = self.node.get_channel_balance();
-        balance
+    pub fn channel_balance(&self) -> ChannelBalance {
+        self.node.channel_balance()
     }
 
     pub fn get_chain_height(&self) -> u32 {
-		self.node.get_chain_height()
-	}
+        self.node.get_chain_height()
+    }
 }
 
 impl Handler for RootHandler {

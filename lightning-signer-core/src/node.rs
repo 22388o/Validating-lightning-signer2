@@ -37,7 +37,9 @@ use lightning_invoice::{Invoice, RawDataPart, RawHrp, RawInvoice, SignedRawInvoi
 use log::{debug, info, trace, warn};
 
 use crate::chain::tracker::ChainTracker;
-use crate::channel::{Channel, ChannelBase, ChannelId, ChannelSetup, ChannelSlot, ChannelStub};
+use crate::channel::{
+    Channel, ChannelBalance, ChannelBase, ChannelId, ChannelSetup, ChannelSlot, ChannelStub,
+};
 use crate::monitor::ChainMonitor;
 use crate::persist::model::NodeEntry;
 use crate::persist::Persist;
@@ -1500,7 +1502,7 @@ impl Node {
 
     ///Height of chain
     pub fn get_chain_height(&self) -> u32 {
-		self.tracker.lock().unwrap().height()
+        self.tracker.lock().unwrap().height()
     }
 
     // Process payment preimages for offered HTLCs.
@@ -1577,21 +1579,19 @@ impl Node {
 /// Trait to monitor read-only features of Node
 pub trait NodeMonitor {
     ///Get the balance
-    fn get_channel_balance(&self) -> u64;
+    fn channel_balance(&self) -> ChannelBalance;
 }
 
 impl NodeMonitor for Node {
     // TODO - lock while we sum so channels can't change until we are done
-    fn get_channel_balance(&self) -> u64 {
-        let mut sum = 0;
-        info!("before lock");
+    fn channel_balance(&self) -> ChannelBalance {
+        let mut sum = ChannelBalance::zero();
         let channels_lock = self.channels.lock().unwrap();
-        info!("after lock");
         for (_, slot_arc) in channels_lock.iter() {
             let slot = slot_arc.lock().unwrap();
             match &*slot {
                 ChannelSlot::Ready(chan) => {
-                    sum += chan.claimable_balance();
+                    sum.accumulate(&chan.balance());
                 }
                 ChannelSlot::Stub(_stub) => {
                     // ignore stubs ...
@@ -1840,7 +1840,6 @@ mod tests {
         let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
         let (node, channel_id) =
             init_node_and_channel(TEST_NODE_CONFIG, TEST_SEED[1], make_test_channel_setup());
-        assert_eq!(node.get_channel_balance(), 3_000_000);
         // TODO check currency matches
         let preimage = PaymentPreimage([0; 32]);
         let hash = PaymentHash(Sha256Hash::hash(&preimage.0).into_inner());
@@ -1871,7 +1870,6 @@ mod tests {
             Ok(())
         })
         .unwrap();
-        assert_eq!(node.get_channel_balance(), 3_000_000 - 110);
     }
 
     #[test]
