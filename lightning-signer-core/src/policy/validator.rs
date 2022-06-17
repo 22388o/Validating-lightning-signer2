@@ -752,6 +752,11 @@ impl EnforcementState {
         preimage_map: &T,
         channel_setup: &ChannelSetup,
     ) -> u64 {
+
+		// If either of commitments is missing, return 0.
+		if self.current_holder_commit_info.is_none() || self.current_counterparty_commit_info.is_none() {
+			return 0;
+		}
         // Our balance in the holder commitment tx
         let cur_holder_bal = self.current_holder_commit_info.as_ref().map(|tx| {
             tx.claimable_balance(
@@ -769,11 +774,9 @@ impl EnforcementState {
             )
         });
         // Our overall balance is the lower of the two
-        let cur_bal_opt = min_opt(cur_holder_bal, cur_cp_bal);
-
         // If this is the first commitment, we will have no current balance.
-        // We will use our funding amount, or zero if we are not the funder.
-        let cur_bal = cur_bal_opt.unwrap_or_else(|| self.initial_holder_value);
+        // We will use online balance in funding tx.
+        let cur_bal = cur_holder_bal.min(cur_cp_bal).unwrap();
 
         log::debug!(
             "balance {} --- cur h {} c {} ",
