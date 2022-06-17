@@ -190,6 +190,7 @@ impl RootHandler {
         self.node.get_chain_height()
     }
 
+
 }
 
 impl Handler for RootHandler {
