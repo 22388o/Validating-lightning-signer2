@@ -115,14 +115,14 @@ Before we sign a commitment transaction, the following controls are checked:
 
 * Revocation - the previous commitment transaction was properly
   revoked by peer disclosing secret.  Note that this requires
-  unbounded storage. <br>
+  unbounded storage. Stateful. <br>
   `policy-commitment-previous-revoked`
 
 * No breach - if signing a local commitment transaction, we must not
-  have revoked it <br>
+  have revoked it.  Stateful. <br>
   `policy-commitment-holder-not-revoked`
 
-* Retries - any retries of this operation must have same data <br>
+* Retries - any retries of this operation must have same data Stateful. <br>
   `policy-commitment-retry-same`
 
 * Anchors:
@@ -154,7 +154,7 @@ These policy controls are also enforced at commitment signing time, but are sepa
 * An outgoing payment must be to a destination allow-list (optional).  <br>
   `policy-commitment-payment-allowlisted`
 
-* An outgoing payment must be under a certain velocity (optional).  <br>
+* An outgoing payment must be under a certain velocity (optional).  Stateful. <br>
   `policy-commitment-payment-velocity`
 
 * An outgoing payment must be approved out-of-band (optional).  <br>
@@ -173,14 +173,14 @@ Before we revoke a commitment by releasing its revocation secret, the
 following controls are checked:
 
 * New commitment - the remote must have signed the new commitment
-  transaction <br>
+  transaction. Stateful. <br>
   `policy-revoke-new-commitment-signed`
 
 * New commitment - the commitment transaction must have had all the
   policy checks pass as in the previous section <br>
   `policy-revoke-new-commitment-valid`
 
-* No close - we did not sign a closing transaction <br>
+* No close - we did not sign a closing transaction. Stateful. <br>
   `policy-revoke-not-closed`
 
 ## HTLC Transactions
@@ -260,7 +260,7 @@ or justice sweep transaction, the following controls are checked:
 ## Commitment Transaction
 
 * Velocity - the amount transferred to peer must be under a certain
-  amount per unit time <br>
+  amount per unit time. Stateful. <br>
   `policy-velocity-transferred`
 
 # Use-case Specific Controls
