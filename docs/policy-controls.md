@@ -122,7 +122,7 @@ Before we sign a commitment transaction, the following controls are checked:
   have revoked it.  Stateful. <br>
   `policy-commitment-holder-not-revoked`
 
-* Retries - any retries of this operation must have same data Stateful. <br>
+* Retries - any retries of this operation must have same data. Stateful. <br>
   `policy-commitment-retry-same`
 
 * Anchors:
