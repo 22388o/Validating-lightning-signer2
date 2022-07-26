@@ -374,6 +374,7 @@ impl<'de> DeserializeAs<'de, CommitmentInfo2> for CommitmentInfo2Def {
 #[derive(Serialize, Deserialize)]
 #[serde(remote = "EnforcementState")]
 pub struct EnforcementStateDef {
+    pub state_number: u64,
     pub next_holder_commit_num: u64,
     pub next_counterparty_commit_num: u64,
     pub next_counterparty_revoke_num: u64,

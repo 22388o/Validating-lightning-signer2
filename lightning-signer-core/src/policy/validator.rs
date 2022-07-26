@@ -61,7 +61,7 @@ pub trait Validator {
         keys: &InMemorySigner,
         setup: &ChannelSetup,
         is_counterparty: bool,
-        tx: &bitcoin::Transaction,
+        tx: &Transaction,
         output_witscripts: &Vec<Vec<u8>>,
     ) -> Result<CommitmentInfo, ValidationError>;
 
@@ -398,6 +398,7 @@ pub trait ValidatorFactory: Send + Sync {
 #[allow(missing_docs)]
 #[derive(Clone, Debug)]
 pub struct EnforcementState {
+    pub state_number: u64,
     pub next_holder_commit_num: u64,
     pub next_counterparty_commit_num: u64,
     pub next_counterparty_revoke_num: u64,
@@ -417,6 +418,7 @@ impl EnforcementState {
     /// that we expect the initial commitment to send to us.
     pub fn new(initial_holder_value: u64) -> EnforcementState {
         EnforcementState {
+            state_number: 0,
             next_holder_commit_num: 0,
             next_counterparty_commit_num: 0,
             next_counterparty_revoke_num: 0,
@@ -428,6 +430,72 @@ impl EnforcementState {
             channel_closed: false,
             initial_holder_value,
         }
+    }
+
+    /// Whether this state is an acceptable continuation of the other state.
+    ///
+    /// `is_updating` is true if the current API request will advance the state.
+    ///
+    /// The `update_next_holder_commit_num` indicates that the current request will update
+    /// the holder commitment number.  `update_closing` indicates that the current
+    /// request will close the channel.  This is used for sanity checking of the
+    /// holder commitment number and the closing flag.
+    ///
+    /// Panics if the sanity checks fail.
+    ///
+    /// It is possible that some other field will be updated, in which case `is_updating`
+    /// will be true by itself.
+    pub fn is_after(
+        &self,
+        o: &EnforcementState,
+        is_updating: bool,
+        update_next_holder_commit_num: Option<u64>,
+        update_closed: bool,
+    ) -> bool {
+        assert!(!(update_closed && update_next_holder_commit_num.is_some()), "cannot update both");
+        assert!(
+            !(update_closed && self.channel_closed),
+            "cannot close channel that is already closed"
+        );
+        assert!(
+            is_updating || (update_next_holder_commit_num.is_none() && !update_closed),
+            "must not update if is_updating is false"
+        );
+
+        let next_holder_commit_num = if let Some(update_num) = update_next_holder_commit_num {
+            assert_eq!(update_num, self.next_holder_commit_num + 1);
+            update_num
+        } else {
+            self.next_holder_commit_num
+        };
+
+        let next_closed = self.channel_closed || update_closed;
+
+        assert!(
+            next_holder_commit_num >= o.next_holder_commit_num
+                && (next_closed || !o.channel_closed),
+            "rollback would occur {} -> {} {} -> {}",
+            o.next_holder_commit_num,
+            next_holder_commit_num,
+            o.channel_closed,
+            next_closed
+        );
+
+        let state_number = if is_updating { self.state_number + 1 } else { self.state_number };
+        state_number >= o.state_number
+    }
+
+    /// The current state mutation counter
+    pub fn state_number(&self) -> u64 {
+        self.state_number
+    }
+
+    /// Advance the state mutation counter
+    ///
+    /// Panics if the channel was previously closed.
+    pub fn advance_state(&mut self) {
+        assert!(!self.channel_closed, "can't advance state after channel closed");
+        self.state_number += 1;
     }
 
     /// Returns the minimum amount to_holder from both commitments or
@@ -478,6 +546,17 @@ impl EnforcementState {
         None
     }
 
+    /// Set the channel closed flag.
+    ///
+    /// No further state updates are allowed after this.
+    pub fn close(&mut self) {
+        // it's only a mutation if it's not a retry
+        if !self.channel_closed {
+            self.advance_state();
+            self.channel_closed = true;
+        }
+    }
+
     /// Set next holder commitment number
     /// Policy enforcement must be performed by the caller
     pub fn set_next_holder_commit_num(
@@ -488,8 +567,13 @@ impl EnforcementState {
         let current = self.next_holder_commit_num;
         // TODO - should we enforce policy-v2-commitment-retry-same here?
         debug!("next_holder_commit_num {} -> {}", current, num);
-        self.next_holder_commit_num = num;
-        self.current_holder_commit_info = Some(current_commitment_info);
+
+        // it's only a mutation if it's not a retry
+        if current != num {
+            self.current_holder_commit_info = Some(current_commitment_info);
+            self.next_holder_commit_num = num;
+            self.advance_state();
+        }
     }
 
     /// Get the current commitment info
@@ -523,8 +607,13 @@ impl EnforcementState {
             self.current_counterparty_commit_info = Some(current_commitment_info);
         }
 
-        self.next_counterparty_commit_num = num;
         debug!("next_counterparty_commit_num {} -> {} current {}", current, num, current_point);
+
+        // it's only a mutation if it's not a retry
+        if num != current {
+            self.next_counterparty_commit_num = num;
+            self.advance_state();
+        }
     }
 
     /// Previous counterparty commitment point, or None if unknown
@@ -560,8 +649,13 @@ impl EnforcementState {
             self.previous_counterparty_commit_info = None;
         }
 
-        self.next_counterparty_revoke_num = num;
         debug!("next_counterparty_revoke_num {} -> {}", current, num);
+
+        // it's only a mutation if it's not a retry
+        if current != num {
+            self.next_counterparty_revoke_num = num;
+            self.advance_state();
+        }
     }
 
     #[allow(missing_docs)]
@@ -733,7 +827,7 @@ impl EnforcementState {
         // We will use our funding amount, or zero if we are not the funder.
         let cur_bal = cur_bal_opt.unwrap_or_else(|| self.initial_holder_value);
 
-        log::debug!(
+        debug!(
             "balance {} -> {} --- cur h {} c {} new h {} c {}",
             cur_bal,
             new_bal,
@@ -766,5 +860,71 @@ fn min_opt(a_opt: Option<u64>, b_opt: Option<u64>) -> Option<u64> {
         }
     } else {
         b_opt
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::key_utils::make_test_pubkey;
+    use crate::util::test_utils::make_test_commitment_info;
+
+    #[test]
+    fn test_advance_state() {
+        let mut state = EnforcementState::new(0);
+        assert_eq!(state.state_number(), 0);
+        let ostate = state.clone();
+        assert!(state.is_after(&ostate, false, None, false));
+
+        state.advance_state();
+        assert_eq!(state.state_number(), 1);
+        assert!(state.is_after(&ostate, false, None, false));
+        assert!(!ostate.is_after(&state, false, None, false));
+
+        let ostate = state.clone();
+        state.set_next_holder_commit_num(1, make_test_commitment_info());
+        assert_eq!(state.state_number(), 2);
+        assert!(state.is_after(&ostate, false, None, false));
+        assert!(ostate.is_after(&state, true, Some(1), false));
+        // retry
+        state.set_next_holder_commit_num(1, make_test_commitment_info());
+        assert_eq!(state.state_number(), 2);
+
+        state.set_next_counterparty_commit_num(1, make_test_pubkey(1), make_test_commitment_info());
+        assert_eq!(state.state_number(), 3);
+        // retry
+        state.set_next_counterparty_commit_num(1, make_test_pubkey(1), make_test_commitment_info());
+        assert_eq!(state.state_number(), 3);
+
+        state.set_next_counterparty_revoke_num(1);
+        assert_eq!(state.state_number(), 4);
+        // retry
+        state.set_next_counterparty_revoke_num(1);
+        assert_eq!(state.state_number(), 4);
+
+        state.close();
+        assert_eq!(state.state_number(), 5);
+        state.close();
+        assert_eq!(state.state_number(), 5);
+    }
+
+    #[test]
+    #[should_panic(expected = "rollback would occur 1 -> 0 false -> false")]
+    fn test_no_holder_rollback() {
+        let mut state = EnforcementState::new(0);
+        state.set_next_holder_commit_num(1, make_test_commitment_info());
+        let bad_state = EnforcementState::new(0);
+        // bad_state has a valid state number, but the holder commitment number will be lower after the update
+        bad_state.is_after(&state, true, None, false);
+    }
+
+    #[test]
+    #[should_panic(expected = "rollback would occur 0 -> 0 true -> false")]
+    fn test_no_closed_rollback() {
+        let mut state = EnforcementState::new(0);
+        state.close();
+        let bad_state = EnforcementState::new(0);
+        // bad_state has a valid state number, but the closed flag is false
+        bad_state.is_after(&state, true, None, false);
     }
 }

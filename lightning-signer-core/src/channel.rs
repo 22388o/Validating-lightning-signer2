@@ -941,7 +941,7 @@ impl Channel {
             .sign_holder_commitment_and_htlcs(&recomposed_holder_tx, &self.secp_ctx)
             .map_err(|_| internal_error("failed to sign"))?;
 
-        self.enforcement_state.channel_closed = true;
+        self.enforcement_state.close();
         trace_enforcement_state!(&self.enforcement_state);
         self.persist()?;
         Ok((sig, htlc_sigs))
@@ -1017,7 +1017,7 @@ impl Channel {
             .sign_holder_commitment_and_htlcs(&holder_commitment_tx, &self.secp_ctx)
             .map_err(|_| internal_error("failed to sign"))?;
 
-        self.enforcement_state.channel_closed = true;
+        self.enforcement_state.close();
         trace_enforcement_state!(&self.enforcement_state);
         self.persist()?;
         Ok((sig, htlc_sigs))
@@ -1161,7 +1161,7 @@ impl Channel {
             .keys
             .sign_closing_transaction(&tx, &self.secp_ctx)
             .map_err(|_| Status::internal("failed to sign"))?;
-        self.enforcement_state.channel_closed = true;
+        self.enforcement_state.close();
         trace_enforcement_state!(&self.enforcement_state);
         self.persist()?;
         Ok(sig)
@@ -1830,7 +1830,7 @@ impl Channel {
             .keys
             .sign_closing_transaction(&recomposed_tx, &self.secp_ctx)
             .map_err(|_| Status::internal("failed to sign"))?;
-        self.enforcement_state.channel_closed = true;
+        self.enforcement_state.close();
         trace_enforcement_state!(&self.enforcement_state);
         self.persist()?;
         Ok(sig)
