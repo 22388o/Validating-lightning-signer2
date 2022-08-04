@@ -45,6 +45,8 @@ pub mod persist;
 pub mod policy;
 /// KeysManager
 pub mod signer;
+/// State management
+pub mod state;
 /// Transaction parsing and construction
 pub mod tx;
 /// Layer-1 wallet

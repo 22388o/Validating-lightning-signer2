@@ -31,6 +31,7 @@ use lightning_signer::persist::Persist;
 use lightning_signer::policy::filter::PolicyFilter;
 use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
 use lightning_signer::signer::derive::KeyDerivationStyle;
+use lightning_signer::state::{StateContext, StateDescriptor, StateUpdate};
 use lightning_signer::tx::tx::HTLCInfo2;
 use lightning_signer::util::status;
 use lightning_signer::Arc;
@@ -499,7 +500,11 @@ impl ChannelHandler {}
 
 impl Handler for ChannelHandler {
     fn handle(&self, msg: Message) -> Result<Box<dyn SerBolt>> {
-        match msg {
+        let mut state_context = StateContext::new(
+            Arc::clone(&self.node),
+            StateUpdate::extract_from_message(/* TODO &msg */),
+        );
+        let reply: Result<Box<dyn SerBolt>> = match msg {
             Message::Memleak(_m) => Ok(Box::new(msgs::MemleakReply { result: false })),
             Message::CheckFutureSecret(m) => {
                 let secret_key = SecretKey::from_slice(&m.secret.0)
@@ -636,6 +641,19 @@ impl Handler for ChannelHandler {
                 let feerate_sat_per_kw = m.feerate;
                 // Flip offered and received
                 let (offered_htlcs, received_htlcs) = extract_htlcs(&m.htlcs);
+                state_context.acquire(
+                    // read-only state
+                    vec![
+                        StateDescriptor::ChainTrackerState,
+                        StateDescriptor::ChannelSetup(self.channel_id.clone()),
+                    ],
+                    // writable state
+                    vec![
+                        StateDescriptor::NodeState,
+                        StateDescriptor::VelocityState,
+                        StateDescriptor::ChannelEnforcementState(self.channel_id.clone()),
+                    ],
+                );
                 let sig = self.node.with_ready_channel(&self.channel_id, |chan| {
                     chan.sign_counterparty_commitment_tx(
                         &tx,
@@ -933,7 +951,9 @@ impl Handler for ChannelHandler {
                 unimplemented!("cloop {}: unknown message type {}", self.id, u.message_type)
             }
             m => unimplemented!("cloop {}: unimplemented message {:?}", self.id, m),
-        }
+        };
+        let _state_update = state_context.commit();
+        reply // need to wrap/augment w/ state_update
     }
 
     fn client_id(&self) -> u64 {
