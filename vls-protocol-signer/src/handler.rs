@@ -200,8 +200,6 @@ impl RootHandler {
     pub fn get_chain_height(&self) -> u32 {
         self.node.get_chain_height()
     }
-
-
 }
 
 impl Handler for RootHandler {

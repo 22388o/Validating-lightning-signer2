@@ -298,6 +298,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "ft6x06"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4a4ce88e1bb8561be20188387ce0b0783c47f5523050add32f9f37f89283b79f"
+dependencies = [
+ "cortex-m 0.7.4",
+ "embedded-hal 0.2.7",
+ "panic-probe",
+ "rtt-target",
+]
+
+[[package]]
 name = "fugit"
 version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -812,6 +824,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-hal 0.2.7",
  "fatfs",
+ "ft6x06",
  "fugit",
  "log",
  "nb 1.0.0",
