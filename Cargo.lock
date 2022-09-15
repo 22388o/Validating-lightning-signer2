@@ -886,6 +886,7 @@ dependencies = [
  "paste",
  "scopeguard",
  "test-log",
+ "thiserror",
  "tonic",
 ]
 

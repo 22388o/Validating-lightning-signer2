@@ -44,6 +44,9 @@ core2 = { version = "0.3.0", optional = true, default-features = false }
 # Disable default enabled “std” feature
 anyhow = { version = "1.0", default-features = false }
 
+# Disable default enabled “std” feature
+thiserror = { version = "1.0", default-features = false }
+
 # Disable default enabled “use_std” feature
 scopeguard = { version = "1.1.0", default-features = false }
 

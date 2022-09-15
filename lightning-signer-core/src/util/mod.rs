@@ -26,6 +26,8 @@ pub mod test_utils;
 #[rustfmt::skip]
 #[macro_use]
 pub mod functional_test_utils;
+/// Invoice utilities
+pub mod invoice;
 /// Key utilities
 pub mod key_utils;
 /// Status error results

@@ -36,6 +36,7 @@ use lightning_signer::signer::{
 use lightning_signer::tx::tx::HTLCInfo2;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::crypto_utils::bitcoin_vec_to_signature;
+use lightning_signer::util::invoice::parse_signed_invoice;
 use lightning_signer::util::log_utils::{parse_log_level_filter, LOG_LEVEL_FILTER_NAMES};
 use lightning_signer::util::status;
 use lightning_signer::util::status::invalid_argument;
@@ -1349,6 +1350,24 @@ impl Signer for SignServer {
             htlc_signatures: htlc_bitcoin_sigs,
         };
         log_req_reply!(&node_id, &channel_id, &reply);
+        Ok(Response::new(reply))
+    }
+
+    async fn preapprove_invoice(
+        &self,
+        request: Request<PreapproveInvoiceRequest>,
+    ) -> Result<Response<PreapproveInvoiceReply>, Status> {
+        let req = request.into_inner();
+        let node_id = self.node_id(req.node_id.clone())?;
+        log_req_enter!(&node_id, &req);
+
+        let signed = parse_signed_invoice(req.invstring)
+            .map_err(|e| invalid_grpc_argument(e.to_string()))?;
+        let node = self.signer.get_node(&node_id)?;
+        node.add_invoice(signed)?;
+
+        let reply = PreapproveInvoiceReply {};
+        log_req_reply!(&node_id, &reply);
         Ok(Response::new(reply))
     }
 
