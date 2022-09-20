@@ -7,6 +7,11 @@ edition = "2018"
 name = "lightning_storage_server"
 path = "src/lib.rs"
 
+[features]
+default = ["cassandra"]
+cassandra = ["cdrs-tokio", "rustls", "rustls-pemfile"]
+test_cassandra = []
+
 [dependencies]
 sled = "0.34"
 serde = { version = "1.0", features = ["derive"] }
@@ -27,6 +32,19 @@ dirs = "4"
 secp256k1 = { version = "0.24", features = ["rand"] }
 bitcoin_hashes = "0.11"
 thiserror = "1.0"
+anyhow = "1.0"
+async-trait = "0.1"
+cdrs-tokio = { version = "7.0.0", features = ["derive", "rust-tls"], optional = true }
+rustls-pemfile = { version = "1.0", optional = true }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+scylla = "0.5"
+
+[dependencies.rustls]
+version = "0.20"
+optional = true
+default-features = false
+#features = ["dangerous_configuration"]
 
 [build-dependencies]
 tonic-build = "0.6"
@@ -41,3 +59,9 @@ path = "src/server_main.rs"
 [[bin]]
 name = "lss-cli"
 path = "src/client_main.rs"
+
+[[example]]
+name = "test_concurrent_access"
+
+[[example]]
+name = "cassandra_bench"

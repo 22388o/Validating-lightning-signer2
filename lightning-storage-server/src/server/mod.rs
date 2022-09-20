@@ -44,6 +44,10 @@ impl Into<proto::KeyValue> for (String, Value) {
 fn into_status(s: Error) -> Status {
     match s {
         Error::Sled(_) => Status::internal("database error"),
+        #[cfg(feature = "cassandra")]
+        Error::Cassandra(_) => Status::internal("database error"),
+        #[cfg(feature = "cassandra")]
+        Error::Scylla(_) => Status::internal("scylla database error"),
         Error::Conflict(_) => unimplemented!("unexpected conflict error"),
     }
 }
@@ -85,7 +89,8 @@ impl LightningStorage for StorageServer {
         let auth = self.check_auth(&auth_proto)?;
         let client_id = auth_proto.client_id;
         let key_prefix = request.key_prefix;
-        let kvs = self.database.get_with_prefix(&client_id, key_prefix).map_err(into_status)?;
+        let kvs =
+            self.database.get_with_prefix(&client_id, key_prefix).await.map_err(into_status)?;
         let hmac = compute_shared_hmac(&auth.shared_secret, &request.nonce, &kvs);
         let kvs_proto = kvs.into_iter().map(|kv| kv.into()).collect();
 
@@ -105,7 +110,7 @@ impl LightningStorage for StorageServer {
         }
 
         let client_id = auth_proto.client_id;
-        let response = match self.database.put(&client_id, &kvs) {
+        let response = match self.database.put(&client_id, &kvs).await {
             Ok(()) => {
                 let hmac = compute_shared_hmac(&auth.shared_secret, &[0x02], &kvs);
 
@@ -113,6 +118,14 @@ impl LightningStorage for StorageServer {
             }
             Err(Error::Sled(_)) => {
                 return Err(Status::internal("database error"));
+            }
+            #[cfg(feature = "cassandra")]
+            Err(Error::Cassandra(_)) => {
+                return Err(Status::internal("database error"));
+            }
+            #[cfg(feature = "cassandra")]
+            Err(Error::Scylla(_)) => {
+                return Err(Status::internal("scylla database error"));
             }
             Err(Error::Conflict(conflicts)) => {
                 let conflicts = conflicts.into_iter().map(|kv| kv.into()).collect();
