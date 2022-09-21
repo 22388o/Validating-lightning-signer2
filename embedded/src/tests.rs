@@ -25,6 +25,7 @@ use lightning_signer::policy::simple_validator::{make_simple_policy, SimpleValid
 use lightning_signer::signer::derive::KeyDerivationStyle;
 use lightning_signer::signer::StartingTimeFactory;
 use lightning_signer::tx::tx::HTLCInfo2;
+use lightning_signer::util::approver::PositiveApprover;
 use lightning_signer::util::clock::ManualClock;
 use lightning_signer::wallet::Wallet;
 use lightning_signer::Arc;
@@ -163,11 +164,13 @@ pub fn test_lightning_signer(postscript: fn()) {
     let validator_factory = Arc::new(SimpleValidatorFactory::new_with_policy(policy));
     let starting_time_factory = FixedStartingTimeFactory::new(1, 1);
     let clock = Arc::new(ManualClock::new(Duration::ZERO));
+    let approver = Arc::new(PositiveApprover());
     let services = NodeServices {
         validator_factory: validator_factory.clone(),
         starting_time_factory,
         persister: persister.clone(),
         clock: clock.clone(),
+        approver: approver.clone(),
     };
     let node = Arc::new(Node::new(config, &seed, Vec::new(), services.clone()));
     let starting_time_factory2 = FixedStartingTimeFactory::new(2, 2);
@@ -176,6 +179,7 @@ pub fn test_lightning_signer(postscript: fn()) {
         starting_time_factory: starting_time_factory2,
         persister,
         clock,
+        approver,
     };
     let node1 = Arc::new(Node::new(config, &seed1, Vec::new(), services2));
 

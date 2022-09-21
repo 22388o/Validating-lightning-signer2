@@ -55,6 +55,7 @@ use crate::tx::script::{
     ANCHOR_OUTPUT_VALUE_SATOSHI,
 };
 use crate::tx::tx::{sort_outputs, CommitmentInfo2, HTLCInfo2};
+use crate::util::approver::PositiveApprover;
 use crate::util::clock::StandardClock;
 use crate::util::crypto_utils::{derive_public_key, payload_for_p2wpkh, payload_for_p2wsh};
 use crate::util::loopback::LoopbackChannelSigner;
@@ -330,16 +331,26 @@ pub fn make_genesis_starting_time_factory(network: Network) -> Arc<dyn StartingT
     FixedStartingTimeFactory::new(now.as_secs(), now.subsec_nanos())
 }
 
-pub fn init_node(node_config: NodeConfig, seedstr: &str) -> Arc<Node> {
-    let mut seed = [0; 32];
-    seed.copy_from_slice(Vec::from_hex(seedstr).unwrap().as_slice());
-
+pub fn make_test_node_services(node_config: &NodeConfig) -> NodeServices {
     let persister: Arc<dyn Persist> = Arc::new(DummyPersister {});
     let validator_factory = Arc::new(SimpleValidatorFactory::new());
     let starting_time_factory = make_genesis_starting_time_factory(node_config.network);
     let clock = Arc::new(StandardClock());
-    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+    let approver = Arc::new(PositiveApprover());
+    NodeServices { validator_factory, starting_time_factory, persister, clock, approver }
+}
 
+pub fn init_node(node_config: NodeConfig, seedstr: &str) -> Arc<Node> {
+    init_node_with_services(node_config, seedstr, make_test_node_services(&node_config))
+}
+
+pub fn init_node_with_services(
+    node_config: NodeConfig,
+    seedstr: &str,
+    services: NodeServices,
+) -> Arc<Node> {
+    let mut seed = [0; 32];
+    seed.copy_from_slice(Vec::from_hex(seedstr).unwrap().as_slice());
     let node = Node::new(node_config, &seed, vec![], services);
     Arc::new(node)
 }
@@ -349,7 +360,21 @@ pub fn init_node_and_channel(
     seedstr: &str,
     setup: ChannelSetup,
 ) -> (Arc<Node>, ChannelId) {
-    let node = init_node(node_config, seedstr);
+    init_node_and_channel_with_services(
+        node_config,
+        seedstr,
+        setup,
+        make_test_node_services(&node_config),
+    )
+}
+
+pub fn init_node_and_channel_with_services(
+    node_config: NodeConfig,
+    seedstr: &str,
+    setup: ChannelSetup,
+    services: NodeServices,
+) -> (Arc<Node>, ChannelId) {
+    let node = init_node_with_services(node_config, seedstr, services);
     {
         let mut tracker = node.get_tracker();
         let header = make_testnet_header(tracker.tip(), TxMerkleNode::all_zeros());
@@ -1632,8 +1657,10 @@ pub(crate) fn make_node() -> (PublicKey, Arc<Node>, [u8; 32]) {
     let validator_factory = Arc::new(SimpleValidatorFactory::new());
     let starting_time_factory = make_genesis_starting_time_factory(TEST_NODE_CONFIG.network);
     let clock = Arc::new(StandardClock());
+    let approver = Arc::new(PositiveApprover());
 
-    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+    let services =
+        NodeServices { validator_factory, starting_time_factory, persister, clock, approver };
 
     let node = Arc::new(Node::new(TEST_NODE_CONFIG, &seed, vec![], services));
     let node_id = node.get_id();

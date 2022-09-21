@@ -17,6 +17,7 @@ use vls_protocol_signer::vls_protocol;
 
 use client::{Client, UnixClient};
 use lightning_signer::node::NodeServices;
+use lightning_signer::util::approver::PositiveApprover;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer_server::nodefront::SingleFront;
 use lightning_signer_server::persist::kv_json::KVJsonPersister;
@@ -121,8 +122,10 @@ pub fn main() {
         let starting_time_factory = ClockStartingTimeFactory::new();
         let validator_factory = make_validator_factory(network);
         let clock = Arc::new(StandardClock());
+        let approver = Arc::new(PositiveApprover());
 
-        let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+        let services =
+            NodeServices { validator_factory, starting_time_factory, persister, clock, approver };
 
         let handler = RootHandler::new(
             network,

@@ -6,6 +6,7 @@ use lightning_signer::node::NodeServices;
 use lightning_signer::persist::DummyPersister;
 use lightning_signer::persist::Persist;
 use lightning_signer::signer::ClockStartingTimeFactory;
+use lightning_signer::util::approver::PositiveApprover;
 use lightning_signer::util::clock::StandardClock;
 use log::info;
 use nix::sys::socket::{socketpair, AddressFamily, SockFlag, SockType};
@@ -65,8 +66,14 @@ pub(crate) fn run_test() {
             let starting_time_factory = ClockStartingTimeFactory::new();
             let validator_factory = make_validator_factory(network);
             let clock = Arc::new(StandardClock());
-            let services =
-                NodeServices { validator_factory, starting_time_factory, persister, clock };
+            let approver = Arc::new(PositiveApprover());
+            let services = NodeServices {
+                validator_factory,
+                starting_time_factory,
+                persister,
+                clock,
+                approver,
+            };
             let handler = RootHandler::new(network, client.id(), seed, vec![], services);
             root_signer_loop(client, handler)
         }

@@ -26,6 +26,8 @@ pub mod test_utils;
 #[rustfmt::skip]
 #[macro_use]
 pub mod functional_test_utils;
+/// Approver interface
+pub mod approver;
 /// Key utilities
 pub mod key_utils;
 /// Status error results

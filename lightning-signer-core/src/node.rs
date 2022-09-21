@@ -54,6 +54,7 @@ use crate::signer::my_keys_manager::MyKeysManager;
 use crate::signer::StartingTimeFactory;
 use crate::sync::{Arc, Weak};
 use crate::tx::tx::PreimageMap;
+use crate::util::approver::Approver;
 use crate::util::clock::Clock;
 use crate::util::crypto_utils::signature_to_bitcoin_vec;
 use crate::util::status::{failed_precondition, internal_error, invalid_argument, Status};
@@ -493,6 +494,7 @@ impl Allowable {
 /// use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
 /// use lightning_signer::signer::ClockStartingTimeFactory;
 /// use lightning_signer::util::clock::StandardClock;
+/// use lightning_signer::util::approver::PositiveApprover;
 /// use lightning_signer::util::test_logger::TestLogger;
 /// use lightning_signer::util::test_utils::TEST_NODE_CONFIG;
 ///
@@ -502,11 +504,13 @@ impl Allowable {
 /// let validator_factory = Arc::new(SimpleValidatorFactory::new());
 /// let starting_time_factory = ClockStartingTimeFactory::new();
 /// let clock = Arc::new(StandardClock());
+/// let approver = Arc::new(PositiveApprover());
 /// let services = NodeServices {
 ///     validator_factory,
 ///     starting_time_factory,
 ///     persister,
 ///     clock,
+///     approver,
 /// };
 /// let node = Arc::new(Node::new(config, &seed, vec![], services));
 /// let (channel_id, opt_stub) = node.new_channel(None, &node).expect("new channel");
@@ -529,6 +533,7 @@ pub struct Node {
     pub(crate) validator_factory: Mutex<Arc<dyn ValidatorFactory>>,
     pub(crate) persister: Arc<dyn Persist>,
     pub(crate) clock: Arc<dyn Clock>,
+    approver: Arc<dyn Approver>,
     allowlist: Mutex<UnorderedSet<Allowable>>,
     tracker: Mutex<ChainTracker<ChainMonitor>>,
     pub(crate) state: Mutex<NodeState>,
@@ -546,6 +551,8 @@ pub struct NodeServices {
     pub persister: Arc<dyn Persist>,
     /// Clock source
     pub clock: Arc<dyn Clock>,
+    /// Handles approvals
+    pub approver: Arc<dyn Approver>,
 }
 
 impl Wallet for Node {
@@ -655,6 +662,7 @@ impl Node {
 
         let persister = services.persister;
         let clock = services.clock;
+        let approver = services.approver;
         let validator_factory = services.validator_factory;
         let policy = validator_factory.policy(node_config.network);
         let global_velocity_control = Self::make_velocity_control(policy);
@@ -669,6 +677,7 @@ impl Node {
             validator_factory: Mutex::new(validator_factory),
             persister,
             clock,
+            approver,
             allowlist: Mutex::new(UnorderedSet::from_iter(allowlist)),
             tracker: Mutex::new(tracker),
             state,
@@ -1580,6 +1589,25 @@ impl Node {
                 Err(failed_precondition("already have a different invoice for same secret"))
             };
         }
+
+        // We need to at least wait to this point to call the approver, if we've already previously
+        // approved the invoice it's important to take the shortcut above w/o bothering the user
+        // again ...
+        //
+        // We can't check the velocity first because the user might decline the invoice
+        // and leave us with updated the velocity state.
+        //
+        // For now this can happen:
+        // 1. vls: "user, is this invoice ok to pay?"
+        // 2. user: "yes, approve the invoice"
+        // 3. vls: "sorry, it exceed the velocity limit"
+        //
+        // https://gitlab.com/lightning-signer/validating-lightning-signer/-/issues/159
+
+        if !self.approver.approve_invoice(&hash, &invoice_state) {
+            return Err(failed_precondition("invoice declined"));
+        }
+
         if !state.velocity_control.insert(self.clock.now().as_secs(), invoice_state.amount_msat) {
             return Err(failed_precondition(format!(
                 "global velocity would be exceeded - += {} = {} > {}",
@@ -1733,6 +1761,7 @@ mod tests {
 
     use crate::channel::ChannelBase;
     use crate::policy::simple_validator::{make_simple_policy, SimpleValidatorFactory};
+    use crate::util::approver::NegativeApprover;
     use crate::util::status::{internal_error, invalid_argument, Code, Status};
     use crate::util::test_utils::*;
 
@@ -1783,6 +1812,76 @@ mod tests {
         let channel_id = ChannelId::new(&hex_decode(TEST_CHANNEL_ID[0]).unwrap());
         assert!(node.get_channel(&channel_id).is_err());
         Ok(())
+    }
+
+    #[test]
+    fn invoice_declined_test() {
+        let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
+
+        let mut services = make_test_node_services(&TEST_NODE_CONFIG);
+        services.approver = Arc::new(NegativeApprover());
+        let (node, _channel_id) = init_node_and_channel_with_services(
+            TEST_NODE_CONFIG,
+            TEST_SEED[1],
+            make_test_channel_setup(),
+            services,
+        );
+        let hash = PaymentHash([2; 32]);
+        // TODO check currency matches
+        let invoice = make_test_invoice(&payee_node, "invoice", hash);
+        assert_failed_precondition_err!(node.add_invoice(invoice.clone()), "invoice declined");
+    }
+
+    pub struct CountingPositiveApprover {
+        count: Mutex<u64>,
+    }
+
+    impl CountingPositiveApprover {
+        fn new() -> CountingPositiveApprover {
+            CountingPositiveApprover { count: Mutex::new(0) }
+        }
+
+        fn count(&self) -> u64 {
+            *self.count.lock().unwrap()
+        }
+    }
+
+    impl Approver for CountingPositiveApprover {
+        fn approve_invoice(&self, _hash: &PaymentHash, _invoice_state: &InvoiceState) -> bool {
+            let mut count = self.count.lock().unwrap();
+            *count += 1;
+            true
+        }
+    }
+
+    #[test]
+    fn invoice_approval_subsequent_shortcut() {
+        // Ensure that after an invoice is approved the add_invoice call will shortcut approve w/o
+        // calling the approver.  AKA - "don't ask the user again if they've already approved it"
+        let payee_node = init_node(TEST_NODE_CONFIG, TEST_SEED[0]);
+        let mut services = make_test_node_services(&TEST_NODE_CONFIG);
+        let approver = Arc::new(CountingPositiveApprover::new());
+        services.approver = approver.clone();
+        let (node, _channel_id) = init_node_and_channel_with_services(
+            TEST_NODE_CONFIG,
+            TEST_SEED[1],
+            make_test_channel_setup(),
+            services,
+        );
+        let hash = PaymentHash([2; 32]);
+        // TODO check currency matches
+        let invoice = make_test_invoice(&payee_node, "invoice", hash);
+
+        // Before any add_invoice approval count is 0
+        assert_eq!(approver.count(), 0);
+        assert_status_ok!(node.add_invoice(invoice.clone()));
+
+        // After the add_invoice check that the approver got called
+        assert_eq!(approver.count(), 1);
+
+        // After another call, make sure it is **not** called again
+        assert_status_ok!(node.add_invoice(invoice.clone()));
+        assert_eq!(approver.count(), 1); // IMPORTANT, not 2
     }
 
     #[test]

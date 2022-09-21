@@ -209,6 +209,7 @@ impl MultiSigner {
 mod tests {
     use crate::persist::DummyPersister;
     use crate::policy::simple_validator::SimpleValidatorFactory;
+    use crate::util::approver::PositiveApprover;
     use crate::util::clock::StandardClock;
     use crate::util::status::Code;
     use crate::util::test_utils::hex_decode;
@@ -221,8 +222,9 @@ mod tests {
         let validator_factory = Arc::new(SimpleValidatorFactory::new());
         let persister = Arc::new(DummyPersister {});
         let clock = Arc::new(StandardClock());
+        let approver = Arc::new(PositiveApprover());
         let starting_time_factory = make_genesis_starting_time_factory(TEST_NODE_CONFIG.network);
-        NodeServices { validator_factory, starting_time_factory, persister, clock }
+        NodeServices { validator_factory, starting_time_factory, persister, clock, approver }
     }
 
     #[test]

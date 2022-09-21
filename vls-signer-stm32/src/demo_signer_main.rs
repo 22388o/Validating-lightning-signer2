@@ -18,6 +18,7 @@ use cortex_m_rt::entry;
 #[allow(unused_imports)]
 use log::{debug, info, trace};
 
+use crate::lightning_signer::util::approver::PositiveApprover;
 use crate::lightning_signer::util::clock::ManualClock;
 use device::heap_bytes_used;
 use lightning_signer::bitcoin::Network;
@@ -75,8 +76,10 @@ fn main() -> ! {
     let persister: Arc<dyn Persist> = Arc::new(DummyPersister);
     let validator_factory = Arc::new(SimpleValidatorFactory::new());
     let clock = Arc::new(ManualClock::new(Duration::ZERO));
+    let approver = Arc::new(PositiveApprover());
 
-    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+    let services =
+        NodeServices { validator_factory, starting_time_factory, persister, clock, approver };
 
     let (sequence, dbid) = read_serial_request_header(&mut serial).expect("read init header");
     assert_eq!(dbid, 0);

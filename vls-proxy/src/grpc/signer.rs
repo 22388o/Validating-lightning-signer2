@@ -5,6 +5,7 @@ use lightning_signer::bitcoin::Network;
 use lightning_signer::node::NodeServices;
 use lightning_signer::persist::Persist;
 use lightning_signer::signer::ClockStartingTimeFactory;
+use lightning_signer::util::approver::PositiveApprover;
 use lightning_signer::util::clock::StandardClock;
 use lightning_signer::util::status::Status;
 use lightning_signer_server::persist::kv_json::KVJsonPersister;
@@ -58,7 +59,9 @@ async fn connect(datadir: &str, uri: Uri, network: Network) {
     let starting_time_factory = ClockStartingTimeFactory::new();
     let validator_factory = make_validator_factory(network);
     let clock = Arc::new(StandardClock());
-    let services = NodeServices { validator_factory, starting_time_factory, persister, clock };
+    let approver = Arc::new(PositiveApprover());
+    let services =
+        NodeServices { validator_factory, starting_time_factory, persister, clock, approver };
     let root_handler =
         RootHandler::new(network, 0, read_integration_test_seed(), allowlist.clone(), services);
 

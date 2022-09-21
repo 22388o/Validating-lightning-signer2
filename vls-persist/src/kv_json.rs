@@ -271,6 +271,7 @@ mod tests {
     use lightning_signer::channel::ChannelSlot;
     use lightning_signer::node::{Node, NodeServices};
     use lightning_signer::policy::simple_validator::SimpleValidatorFactory;
+    use lightning_signer::util::approver::PositiveApprover;
     use lightning_signer::util::clock::StandardClock;
     use lightning_signer::util::test_utils::*;
 
@@ -294,6 +295,7 @@ mod tests {
         let validator_factory = Arc::new(SimpleValidatorFactory::new());
         let starting_time_factory = make_genesis_starting_time_factory(TEST_NODE_CONFIG.network);
         let clock = Arc::new(StandardClock());
+        let approver = Arc::new(PositiveApprover());
 
         let (node_id, node_arc, stub, seed) = make_node_and_channel(channel_id0.clone());
 
@@ -311,6 +313,7 @@ mod tests {
                 starting_time_factory,
                 persister: persister.clone(),
                 clock,
+                approver,
             };
 
             let nodes = Node::restore_nodes(services.clone());
