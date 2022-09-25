@@ -64,4 +64,4 @@ path = "src/client_main.rs"
 name = "test_concurrent_access"
 
 [[example]]
-name = "cassandra_bench"
+name = "database_bench"
