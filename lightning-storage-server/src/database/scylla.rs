@@ -115,7 +115,7 @@ impl Database for ScyllaDatabase {
                 .into_typed::<(String, i64, Vec<u8>)>()
                 .map(|row| {
                     let (key, version, value) = row.unwrap();
-                    (key, Value { version: version as u64, value })
+                    (key, Value { version, value })
                 })
                 .filter(|(k, _)| k.starts_with(&key_prefix))
                 .collect();

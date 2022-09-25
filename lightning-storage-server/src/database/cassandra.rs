@@ -382,10 +382,7 @@ impl Database for dyn CassandraDatabase {
             if !res.key.starts_with(&key_prefix) {
                 break;
             }
-            results.push((
-                res.key,
-                Value { version: res.version as u64, value: res.value.into_vec() },
-            ));
+            results.push((res.key, Value { version: res.version, value: res.value.into_vec() }));
         }
         Ok(results)
     }
