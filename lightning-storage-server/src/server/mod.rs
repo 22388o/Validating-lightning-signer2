@@ -43,12 +43,11 @@ impl Into<proto::KeyValue> for (String, Value) {
 
 fn into_status(s: Error) -> Status {
     match s {
-        Error::Sled(_) => Status::internal("database error"),
-        #[cfg(feature = "cassandra")]
-        Error::Cassandra(_) => Status::internal("database error"),
-        #[cfg(feature = "cassandra")]
-        Error::Scylla(_) => Status::internal("scylla database error"),
         Error::Conflict(_) => unimplemented!("unexpected conflict error"),
+        e => {
+            log::error!("database error: {:?}", e);
+            Status::internal("unexpected error")
+        }
     }
 }
 
@@ -116,20 +115,13 @@ impl LightningStorage for StorageServer {
 
                 PutReply { success: true, hmac, conflicts: vec![] }
             }
-            Err(Error::Sled(_)) => {
-                return Err(Status::internal("database error"));
-            }
-            #[cfg(feature = "cassandra")]
-            Err(Error::Cassandra(_)) => {
-                return Err(Status::internal("database error"));
-            }
-            #[cfg(feature = "cassandra")]
-            Err(Error::Scylla(_)) => {
-                return Err(Status::internal("scylla database error"));
-            }
             Err(Error::Conflict(conflicts)) => {
                 let conflicts = conflicts.into_iter().map(|kv| kv.into()).collect();
                 PutReply { success: false, hmac: Default::default(), conflicts }
+            }
+            Err(e) => {
+                log::error!("database error: {:?}", e);
+                return Err(Status::internal("unexpected error"));
             }
         };
         Ok(Response::new(response))

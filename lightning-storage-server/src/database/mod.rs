@@ -1,5 +1,6 @@
 #[cfg(feature = "cassandra")]
 pub mod cassandra;
+pub mod postgres;
 pub mod scylla;
 pub mod sled;
 
@@ -19,6 +20,9 @@ pub enum Error {
     #[cfg(feature = "cassandra")]
     #[error("database error: {0}")]
     Scylla(#[from] scylla::DbError),
+    #[cfg(feature = "postgres")]
+    #[error("database error: {0}")]
+    Postgres(#[from] postgres::PgError),
     /// version conflicts detected - existing values are returned
     #[error("put conflict: {0:?}")]
     Conflict(Vec<(String, Option<Value>)>),

@@ -1,4 +1,7 @@
+#[cfg(feature = "test_cassandra")]
 use lightning_storage_server::database::cassandra;
+#[cfg(feature = "test_postgres")]
+use lightning_storage_server::database::postgres;
 use lightning_storage_server::database::sled::SledDatabase;
 use lightning_storage_server::{Database, Error, Value};
 use std::sync::Arc;
@@ -30,6 +33,13 @@ async fn test_sled_database() {
 #[tokio::test]
 async fn test_cassandra_database() {
     let db = cassandra::new_and_clear().await.unwrap();
+    do_basic_with_db(db).await;
+}
+
+#[cfg(feature = "test_postgres")]
+#[tokio::test]
+async fn test_postgres_database() {
+    let db = postgres::new_and_clear().await.unwrap();
     do_basic_with_db(db).await;
 }
 
