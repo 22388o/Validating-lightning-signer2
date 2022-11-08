@@ -164,8 +164,8 @@ fn start_test_mode(runctx: TestingContext) -> ! {
             .build();
         let (init_reply, _muts) =
             root_handler.handle(Message::HsmdInit2(init)).expect("handle init");
-        write_serial_response_header(&mut devctx.serial, sequence).expect("write init header");
-        msgs::write_vec(&mut devctx.serial, init_reply.as_vec()).expect("write init reply");
+        write_serial_response_header(&devctx.serial, sequence).expect("write init header");
+        msgs::write_vec(&devctx.serial, init_reply.as_vec()).expect("write init reply");
 
         info!("used {} bytes", heap_bytes_used());
         root_handler
@@ -243,8 +243,8 @@ fn handle_requests(arc_devctx: Arc<RefCell<DeviceContext>>, root_handler: RootHa
             top_tracks[4].clone(),
         ]);
 
-        write_serial_response_header(&mut devctx.serial, sequence).expect("write reply header");
-        msgs::write_vec(&mut devctx.serial, reply.as_vec()).expect("write reply");
+        write_serial_response_header(&devctx.serial, sequence).expect("write reply header");
+        msgs::write_vec(&devctx.serial, reply.as_vec()).expect("write reply");
     }
 }
 

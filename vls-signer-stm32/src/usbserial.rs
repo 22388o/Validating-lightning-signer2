@@ -197,7 +197,7 @@ impl Read for SerialDriver {
     }
 }
 
-impl Write for SerialDriver {
+impl Write for &SerialDriver {
     type Error = serde_bolt::Error;
 
     fn write_all(&mut self, buf: &[u8]) -> serde_bolt::Result<()> {

@@ -833,7 +833,7 @@ fn read_message_and_data<R: Read>(reader: &mut R) -> Result<(Message, Vec<u8>)> 
     Message::read_message(&mut data, message_type).map(|m| (m, saved_data))
 }
 
-pub fn write<W: Write, T: ser::Serialize + DeBolt>(writer: &mut W, value: T) -> Result<()> {
+pub fn write<W: Write, T: ser::Serialize + DeBolt>(writer: W, value: T) -> Result<()> {
     let message_type = T::TYPE;
     let mut buf = message_type.to_be_bytes().to_vec();
     let mut val_buf = to_vec(&value)?;
@@ -841,7 +841,7 @@ pub fn write<W: Write, T: ser::Serialize + DeBolt>(writer: &mut W, value: T) -> 
     write_vec(writer, buf)
 }
 
-pub fn write_vec<W: Write>(writer: &mut W, buf: Vec<u8>) -> Result<()> {
+pub fn write_vec<W: Write>(mut writer: W, buf: Vec<u8>) -> Result<()> {
     let len: u32 = buf.len() as u32;
     writer.write_all(&len.to_be_bytes())?;
     writer.write_all(&buf)?;
@@ -861,7 +861,7 @@ pub fn write_serial_request_header<W: Write>(
 }
 
 /// Write a serial response header that includes two magic bytes and two sequence bytes
-pub fn write_serial_response_header<W: Write>(writer: &mut W, sequence: u16) -> Result<()> {
+pub fn write_serial_response_header<W: Write>(mut writer: W, sequence: u16) -> Result<()> {
     writer.write_all(&0x5aa5u16.to_be_bytes())?;
     writer.write_all(&sequence.to_be_bytes())?;
     Ok(())
