@@ -114,7 +114,7 @@ pub enum CommitmentType {
 }
 
 /// The negotiated parameters for the [Channel]
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct ChannelSetup {
     /// Whether the channel is outbound
     pub is_outbound: bool,

@@ -293,7 +293,7 @@ pub fn make_test_channel_keys() -> InMemorySigner {
         [0u8; 32],
     );
     // This needs to match make_test_channel_setup above.
-    inmemkeys.ready_channel(&ChannelTransactionParameters {
+    inmemkeys.provide_channel_parameters(&ChannelTransactionParameters {
         holder_pubkeys: inmemkeys.pubkeys().clone(),
         holder_selected_contest_delay: 5,
         is_outbound_from_holder: true,
@@ -556,7 +556,7 @@ pub fn make_test_counterparty_keys(
                 [0u8; 32],              // Key derivation parameters
             );
             // This needs to match make_test_channel_setup above.
-            cpkeys.ready_channel(&ChannelTransactionParameters {
+            cpkeys.provide_channel_parameters(&ChannelTransactionParameters {
                 holder_pubkeys: cpkeys.pubkeys().clone(),
                 holder_selected_contest_delay: 7,
                 is_outbound_from_holder: false,
