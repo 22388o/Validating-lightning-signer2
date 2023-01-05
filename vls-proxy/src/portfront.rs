@@ -60,9 +60,11 @@ impl ChainTrack for NodePortFront {
     }
 
     async fn heartbeat_pubkey(&self) -> PublicKey {
+        debug!("ChainTrack::heartbeat_pubkey starting");
         {
             let lock = self.heartbeat_pubkey.lock().unwrap();
             if let Some(pk) = *lock {
+                debug!("ChainTrack::heartbeat_pubkey existing");
                 return pk;
             }
         }
@@ -71,13 +73,18 @@ impl ChainTrack for NodePortFront {
             .handle_message(msgs::NodeInfo {}.as_vec())
             .await
             .expect("NodeInfo failed");
+        debug!("ChainTrack::heartbeat_pubkey node info fetched");
         if let Ok(Message::NodeInfoReply(m)) = msgs::from_vec(reply) {
+            debug!("ChainTrack::heartbeat_pubkey before from_slice");
             let xpubkey = ExtendedPubKey::decode(&m.bip32.0).expect("NodeInfoReply bip32 xpubkey");
             let pubkey = xpubkey.public_key;
+            debug!("ChainTrack::heartbeat_pubkey new pubkey");
             let mut lock = self.heartbeat_pubkey.lock().unwrap();
             *lock = Some(pubkey.clone());
+            debug!("ChainTrack::heartbeat_pubkey new finished");
             return pubkey;
         } else {
+            debug!("ChainTrack::heartbeat_pubkey failed");
             panic!("unexpected NodeInfoReply");
         }
     }

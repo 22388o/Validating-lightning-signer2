@@ -97,15 +97,19 @@ impl ChainFollower {
 
     async fn run(&self) {
         let mut interval = time::interval(Duration::from_millis(self.update_interval));
+        debug!("ChainFollower::run starting, interval={:?}", interval);
         loop {
             interval.tick().await;
+            debug!("ChainFollower::run awake");
             loop {
                 match self.update().await {
                     Ok(next) => {
                         if next == ScheduleNext::Pause {
+                            debug!("ChainFollower::run pausing");
                             break;
                         }
                         // otherwise loop immediately
+                        debug!("ChainFollower::run looping");
                     }
                     Err(err) => {
                         error!("{}: {:?}", self.tracker.log_prefix(), err);
@@ -119,20 +123,26 @@ impl ChainFollower {
     async fn heartbeat_monitor(&self) -> &HeartbeatMonitor {
         self.heartbeat_monitor
             .get_or_init(|| async {
+                debug!("ChainFollower::heartbeat_monitor getting pubkey");
                 let pubkey = self.tracker.heartbeat_pubkey().await;
+                debug!("ChainFollower::heartbeat_monitor creating new monitor");
                 HeartbeatMonitor::new(self.tracker.network(), pubkey, self.tracker.log_prefix())
             })
             .await
     }
 
     async fn update(&self) -> Result<ScheduleNext, Error> {
+        debug!("ChainFollower::update heartbeat starting");
         let heartbeat_monitor = self.heartbeat_monitor().await;
         heartbeat_monitor.on_tick();
+        debug!("ChainFollower::update heartbeat finished");
 
         let mut state = self.state.lock().await;
 
         // Fetch the current tip from the tracker
+        debug!("ChainFollower::update tip_info starting");
         let (height0, hash0) = self.tracker.tip_info().await;
+        debug!("ChainFollower::update tip_info finished");
 
         match self.follower.follow_with_proof(height0, hash0, self).await? {
             FollowWithProofAction::None => {
@@ -153,7 +163,9 @@ impl ChainFollower {
                 // debug!("node {} at height {} adding {}", self.tracker.log_prefix(), height, hash);
                 self.tracker.add_block(block.header, txs, proof).await;
 
+                debug!("ChainFollower::update do_heartbeat starting");
                 self.do_heartbeat().await;
+                debug!("ChainFollower::update do_heartbeat finished");
                 Ok(ScheduleNext::Immediate)
             }
             FollowWithProofAction::BlockReorged(_block, (txs, proof)) => {
