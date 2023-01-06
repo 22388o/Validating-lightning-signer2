@@ -9,6 +9,7 @@
 //! NAT.
 
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener};
+use std::panic;
 use std::process::exit;
 use std::sync::Arc;
 
@@ -39,6 +40,14 @@ pub mod grpc;
 /// Implement both the hsmd replacement and the signer in a single binary.
 /// The signer is forked off as a separate process.
 pub fn main() {
+    // Ensure we exit if any thread panics
+    let orig_hook = panic::take_hook();
+    panic::set_hook(Box::new(move |panic_info| {
+        // invoke the default handler and exit the process
+        orig_hook(panic_info);
+        exit(1);
+    }));
+
     let parent_fd = open_parent_fd();
 
     let app = App::new("signer")
