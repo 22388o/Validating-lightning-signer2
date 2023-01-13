@@ -643,9 +643,10 @@ pub struct ReverseWatchesReply {
 #[derive(SerBolt, Debug, Serialize, Deserialize)]
 #[message_id(2005)]
 pub struct AddBlock {
-    pub header: LargeOctets,
-    pub txs: Vec<LargeOctets>,
-    pub txs_proof: Option<LargeOctets>,
+    /// Bitcoin consensus encoded
+    pub header: Octets,
+    /// Bitcoin consensus encoded TXOO UnspentProof
+    pub unspent_proof: Option<LargeOctets>,
 }
 
 ///
@@ -656,8 +657,9 @@ pub struct AddBlockReply {}
 #[derive(SerBolt, Debug, Serialize, Deserialize)]
 #[message_id(2006)]
 pub struct RemoveBlock {
-    pub txs: Vec<LargeOctets>,
-    pub txs_proof: Option<LargeOctets>,
+    /// Bitcoin consensus encoded TXOO UnspentProof
+    // FIXME do we need the option?
+    pub unspent_proof: Option<LargeOctets>,
 }
 
 ///

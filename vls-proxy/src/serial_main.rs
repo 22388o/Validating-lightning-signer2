@@ -18,6 +18,7 @@ use vls_protocol_signer::vls_protocol::msgs::{self, Message, SerialRequestHeader
 use vls_protocol_signer::vls_protocol::serde_bolt::WireString;
 
 use serial::{connect, SerialSignerPort, SignerLoop};
+use vls_frontend::frontend::SourceFactory;
 use vls_frontend::Frontend;
 use vls_proxy::client::UnixClient;
 use vls_proxy::portfront::SignerPortFront;
@@ -101,8 +102,12 @@ pub fn main() -> anyhow::Result<()> {
 
         let network = vls_network().parse::<Network>().expect("malformed vls network");
         let signer_port = SerialSignerPort::new(serial.clone());
+        let signer_front =
+            Arc::new(SignerPortFront { signer_port: Box::new(signer_port), network });
+        let source_factory = Arc::new(SourceFactory::new());
         let frontend = Frontend::new(
-            Arc::new(SignerPortFront { signer_port: Box::new(signer_port), network }),
+            signer_front,
+            source_factory,
             Url::parse(&bitcoind_rpc_url()).expect("malformed rpc url"),
         );
 

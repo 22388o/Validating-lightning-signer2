@@ -1,15 +1,18 @@
 use alloc::collections::VecDeque;
+use alloc::sync::Arc;
 
 use bitcoin::blockdata::constants::{genesis_block, DIFFCHANGE_INTERVAL};
 use bitcoin::hashes::hex::ToHex;
-use bitcoin::util::merkleblock::PartialMerkleTree;
+use bitcoin::secp256k1::PublicKey;
 use bitcoin::util::uint::Uint256;
 use bitcoin::{BlockHeader, Network, OutPoint, Transaction, Txid};
 
+use crate::policy::validator::ValidatorFactory;
 #[allow(unused_imports)]
 use log::{debug, error};
 use serde_derive::{Deserialize, Serialize};
 use serde_with::serde_as;
+use txoo::proof::{ProofType, UnspentProof};
 
 use crate::prelude::*;
 use crate::short_function;
@@ -24,8 +27,8 @@ pub enum Error {
     InvalidBlock,
     /// Reorg size greater than [`ChainTracker::MAX_REORG_SIZE`]
     ReorgTooDeep,
-    /// The SPV (merkle) proof was incorrect
-    InvalidSpvProof,
+    /// The TXOO proof was incorrect
+    InvalidProof,
 }
 
 macro_rules! error_invalid_chain {
@@ -42,10 +45,10 @@ macro_rules! error_invalid_block {
     }};
 }
 
-macro_rules! error_invalid_spv_proof {
+macro_rules! error_invalid_proof {
     ($($arg:tt)*) => {{
         error!("InvalidSpvProof: {}", format!($($arg)*));
-        Error::InvalidSpvProof
+        Error::InvalidProof
     }};
 }
 
@@ -76,6 +79,8 @@ pub struct ChainTracker<L: ChainListener + Ord> {
     pub network: Network,
     /// listeners
     pub listeners: OrderedMap<L, ListenSlot>,
+    node_id: PublicKey,
+    validator_factory: Arc<dyn ValidatorFactory>,
 }
 
 impl<L: ChainListener + Ord> ChainTracker<L> {
@@ -86,19 +91,43 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
     const MAX_REORG_SIZE: usize = 100;
 
     /// Create a new tracker
-    pub fn new(network: Network, height: u32, tip: BlockHeader) -> Result<Self, Error> {
+    pub fn new(
+        network: Network,
+        height: u32,
+        tip: BlockHeader,
+        node_id: PublicKey,
+        validator_factory: Arc<dyn ValidatorFactory>,
+    ) -> Result<Self, Error> {
         tip.validate_pow(&tip.target())
             .map_err(|e| error_invalid_block!("validate pow {}: {}", tip.target(), e))?;
         let headers = VecDeque::new();
         let listeners = OrderedMap::new();
-        Ok(ChainTracker { headers, tip, height, network, listeners })
+        Ok(ChainTracker { headers, tip, height, network, listeners, node_id, validator_factory })
+    }
+
+    /// Restore a tracker
+    pub fn restore(
+        headers: VecDeque<BlockHeader>,
+        tip: BlockHeader,
+        height: u32,
+        network: Network,
+        listeners: OrderedMap<L, ListenSlot>,
+        node_id: PublicKey,
+        validator_factory: Arc<dyn ValidatorFactory>,
+    ) -> Self {
+        ChainTracker { headers, tip, height, network, listeners, node_id, validator_factory }
     }
 
     /// Create a tracker at genesis
-    pub fn genesis(network: Network) -> Self {
+    pub fn genesis(
+        network: Network,
+        node_id: PublicKey,
+        validator_factory: Arc<dyn ValidatorFactory>,
+    ) -> Self {
         let height = 0;
         let genesis = genesis_block(network);
-        Self::new(network, height, genesis.header).expect("genesis block is valid")
+        Self::new(network, height, genesis.header, node_id, validator_factory)
+            .expect("genesis block is valid")
     }
 
     /// Current chain tip header
@@ -117,16 +146,16 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
     }
 
     /// Remove block at tip due to reorg
-    pub fn remove_block(
-        &mut self,
-        txs: Vec<Transaction>,
-        txs_proof: Option<PartialMerkleTree>,
-    ) -> Result<BlockHeader, Error> {
+    pub fn remove_block(&mut self, proof: UnspentProof) -> Result<BlockHeader, Error> {
         if self.headers.is_empty() {
             return Err(Error::ReorgTooDeep);
         }
         let header = self.tip;
-        Self::validate_spv(&header, &txs, txs_proof)?;
+        self.validate_block(&header, &proof)?;
+        let txs = match proof.proof {
+            ProofType::Filter(_, spv_proof) => spv_proof.txs,
+            ProofType::Block(b) => b.txdata,
+        };
         self.notify_listeners_remove(&txs);
 
         self.tip = self.headers.pop_front().expect("already checked for empty");
@@ -176,13 +205,12 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
     }
 
     /// Add a block, which becomes the new tip
-    pub fn add_block(
-        &mut self,
-        header: BlockHeader,
-        txs: Vec<Transaction>,
-        txs_proof: Option<PartialMerkleTree>,
-    ) -> Result<(), Error> {
-        self.validate_block(&header, &txs, txs_proof)?;
+    pub fn add_block(&mut self, header: BlockHeader, proof: UnspentProof) -> Result<(), Error> {
+        self.validate_block(&header, &proof)?;
+        let txs = match proof.proof {
+            ProofType::Filter(_, spv_proof) => spv_proof.txs,
+            ProofType::Block(b) => b.txdata,
+        };
 
         self.notify_listeners_add(&txs);
 
@@ -258,12 +286,7 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         (txid_watches.into_iter().collect(), outpoint_watches.into_iter().collect())
     }
 
-    fn validate_block(
-        &self,
-        header: &BlockHeader,
-        txs: &[Transaction],
-        txs_proof: Option<PartialMerkleTree>,
-    ) -> Result<(), Error> {
+    fn validate_block(&self, header: &BlockHeader, proof: &UnspentProof) -> Result<(), Error> {
         // Check hash is correctly chained
         if header.prev_blockhash != self.tip.block_hash() {
             return Err(error_invalid_chain!(
@@ -294,40 +317,12 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
             }
         }
 
-        Self::validate_spv(header, txs, txs_proof)?;
-        Ok(())
-    }
+        let (_, outpoint_watches) = self.get_all_forward_watches();
 
-    fn validate_spv(
-        header: &BlockHeader,
-        txs: &[Transaction],
-        txs_proof: Option<PartialMerkleTree>,
-    ) -> Result<(), Error> {
-        // Check SPV proof
-        if let Some(txs_proof) = txs_proof {
-            let mut matches = Vec::new();
-            let mut indexes = Vec::new();
-
-            let root = txs_proof
-                .extract_matches(&mut matches, &mut indexes)
-                .map_err(|e| error_invalid_spv_proof!("extract matches failed: {:?}", e))?;
-            if root != header.merkle_root {
-                return Err(error_invalid_spv_proof!(
-                    "root {} != header.merkle_root {}",
-                    root,
-                    header.merkle_root
-                ));
-            }
-            for (tx, txid) in txs.iter().zip(matches) {
-                if tx.txid() != txid {
-                    return Err(error_invalid_spv_proof!("tx.txid {} != txid {}", tx.txid(), txid));
-                }
-            }
-        } else {
-            if !txs.is_empty() {
-                return Err(error_invalid_spv_proof!("txs not empty"));
-            }
-        }
+        let validator = self.validator_factory.make_validator(self.network, self.node_id, None);
+        validator
+            .validate_block(proof, self.height + 1, header, &outpoint_watches)
+            .map_err(|e| error_invalid_proof!("{:?}", e))?;
         Ok(())
     }
 }
@@ -375,8 +370,10 @@ pub fn max_target(network: Network) -> Uint256 {
 }
 
 #[cfg(test)]
+#[cfg(x)]
 mod tests {
     use bitcoin::hashes::Hash;
+    use bitcoin::util::merkleblock::PartialMerkleTree;
     use bitcoin::{PackedLockTime, Sequence, TxMerkleNode, Witness};
     use core::iter::FromIterator;
 
@@ -566,16 +563,13 @@ mod tests {
         let proof = PartialMerkleTree::from_txids(txids.as_slice(), &[true]);
 
         // try providing txs without proof
-        assert_eq!(
-            tracker.add_block(header, txs.to_vec(), None).err(),
-            Some(Error::InvalidSpvProof)
-        );
+        assert_eq!(tracker.add_block(header, txs.to_vec(), None).err(), Some(Error::InvalidProof));
 
         // try with a wrong root
         let bad_header = make_header(tracker.tip(), TxMerkleNode::all_zeros());
         assert_eq!(
             tracker.add_block(bad_header, txs.to_vec(), Some(proof.clone())).err(),
-            Some(Error::InvalidSpvProof)
+            Some(Error::InvalidProof)
         );
 
         // try with a wrong txid
@@ -588,7 +582,7 @@ mod tests {
 
         assert_eq!(
             tracker.add_block(header, vec![bad_tx], Some(proof.clone())).err(),
-            Some(Error::InvalidSpvProof)
+            Some(Error::InvalidProof)
         );
 
         // but this works

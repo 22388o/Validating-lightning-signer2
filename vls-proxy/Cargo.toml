@@ -44,12 +44,16 @@ async-trait = "0.1"
 url = { version = "2.3", optional = true }
 as-any = "0.3"
 hex = "0.4"
-txoo-bitcoind-client = "0.1"
 
 [dependencies.vls-server]
 path = "../vls-server"
 default_features = false
 features = ["frontend", "persist-kv-json", "debug"]
+
+[dependencies.txoo-bitcoind-client]
+version = "0.1"
+git = "https://gitlab.com/lightning-signer/txoo"
+branch = "2023-01-encoding"
 
 [build-dependencies]
 tonic-build = "0.8"

@@ -55,6 +55,7 @@ use lightning_signer_server::{CLAP_NETWORK_URL_MAPPING, NETWORK_NAMES};
 use remotesigner::signer_server::{Signer, SignerServer};
 use remotesigner::version_server::Version;
 use remotesigner::*;
+use vls_frontend::frontend::SourceFactory;
 use vls_frontend::Frontend;
 
 macro_rules! log_req_enter_with_id {
@@ -1650,7 +1651,9 @@ pub async fn start() -> Result<(), Box<dyn std::error::Error>> {
     let rpc_s: String = matches.value_of_t("bitcoin").expect("bitcoind RPC URL");
     let rpc_url = Url::parse(&rpc_s).expect("malformed RPC URL");
 
-    let frontend = Frontend::new(Arc::new(SignerFront { signer: Arc::clone(&signer) }), rpc_url);
+    let signer_front = Arc::new(SignerFront { signer: Arc::clone(&signer) });
+    let source_factory = Arc::new(SourceFactory::new());
+    let frontend = Frontend::new(signer_front, source_factory, rpc_url);
     frontend.start();
     let approver = Arc::new(PositiveApprover());
     let server = SignServer { signer, network, frontend, approver, seed_persister };

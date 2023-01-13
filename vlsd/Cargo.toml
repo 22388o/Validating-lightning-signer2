@@ -24,7 +24,6 @@ vls-core = { path = "../vls-core", features = ["debug", "grpc", "use_backtrace"]
 vls-server = { path = "../vls-server", features = ["persist", "grpc", "persist-kv-json", "frontend"] }
 vls-protocol-signer = { path = "../vls-protocol-signer" }
 vls-frontend = { path = "../vls-frontend", optional = true }
-txoo-bitcoind-client = "0.1"
 backtrace = "0.3"
 bip39 = { version = "1.0.0", features = ["rand"] }
 hex = "0.4"
@@ -46,6 +45,11 @@ url = { version = "2.2" }
 # For logging in unit tests
 test-log = "0.2.8"
 env_logger = "0.9.0"
+
+[dependencies.txoo-bitcoind-client]
+version = "0.1"
+git = "https://gitlab.com/lightning-signer/txoo"
+branch = "2023-01-encoding"
 
 [build-dependencies]
 tonic-build = "0.8"

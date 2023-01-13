@@ -14,7 +14,6 @@ use bitcoin::secp256k1::{
     self, ecdsa::Signature, Message, PublicKey, Secp256k1, SecretKey, SignOnly,
 };
 use bitcoin::util::hash::bitcoin_merkle_root;
-use bitcoin::util::merkleblock::PartialMerkleTree;
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::util::sighash::SighashCache;
 use bitcoin::{
@@ -37,6 +36,7 @@ use lightning::ln::chan_utils::{
 use lightning::ln::{chan_utils, PaymentHash, PaymentPreimage, PaymentSecret};
 use lightning::util::test_utils;
 use lightning_invoice::{Currency, Invoice, InvoiceBuilder};
+use txoo::proof::UnspentProof;
 
 use super::key_utils::{
     make_test_bitcoin_pubkey, make_test_counterparty_points, make_test_privkey, make_test_pubkey,
@@ -373,12 +373,12 @@ pub fn init_node_and_channel(
     let node = init_node(node_config, seedstr);
     {
         let mut tracker = node.get_tracker();
-        let header = make_testnet_header(tracker.tip(), TxMerkleNode::all_zeros());
-        tracker.add_block(header, vec![], None).unwrap();
-        let header = make_testnet_header(tracker.tip(), TxMerkleNode::all_zeros());
-        tracker.add_block(header, vec![], None).unwrap();
-        let header = make_testnet_header(tracker.tip(), TxMerkleNode::all_zeros());
-        tracker.add_block(header, vec![], None).unwrap();
+        let (header, proof) = make_testnet_header(tracker.tip(), tracker.height());
+        tracker.add_block(header, proof).unwrap();
+        let (header, proof) = make_testnet_header(tracker.tip(), tracker.height());
+        tracker.add_block(header, proof).unwrap();
+        let (header, proof) = make_testnet_header(tracker.tip(), tracker.height());
+        tracker.add_block(header, proof).unwrap();
     }
     let channel_id = ChannelId::new(&hex_decode(TEST_CHANNEL_ID[0]).unwrap());
     node.new_channel(Some(channel_id.clone()), &node).expect("new_channel");
@@ -1597,20 +1597,26 @@ pub fn make_block(tip: BlockHeader, txs: Vec<Transaction>) -> Block {
     Block { header, txdata: txs }
 }
 
-pub fn proof_for_block(block: &Block) -> Option<PartialMerkleTree> {
-    if block.txdata.is_empty() {
-        return None;
-    }
-    let txids: Vec<Txid> = block.txdata.iter().map(|tx| tx.txid()).collect();
-    let matches: Vec<bool> = txids.iter().map(|_| true).collect();
-    Some(PartialMerkleTree::from_txids(&txids, &matches))
+pub fn proof_for_block(block: &Block, height: u32) -> UnspentProof {
+    UnspentProof::prove_unchecked(&block, height)
 }
 
-pub fn make_testnet_header(tip: BlockHeader, merkle_root: TxMerkleNode) -> BlockHeader {
+pub fn make_testnet_header(tip: BlockHeader, tip_height: u32) -> (BlockHeader, UnspentProof) {
     // use lower bits so it doesn't take forever
+    let txs: Vec<Transaction> = vec![Transaction {
+        version: 0,
+        lock_time: PackedLockTime(tip_height + 1),
+        input: vec![],
+        output: vec![],
+    }];
+    let tx_ids: Vec<_> = txs.iter().map(|tx| tx.txid().as_hash()).collect();
+    let merkle_root = bitcoin_merkle_root(tx_ids.into_iter()).unwrap().into();
     let regtest_genesis = genesis_block(Network::Regtest);
     let bits = regtest_genesis.header.bits;
-    mine_header_with_bits(tip.block_hash(), merkle_root, bits)
+    let header = mine_header_with_bits(tip.block_hash(), merkle_root, bits);
+    let block = bitcoin::Block { header, txdata: txs };
+    let proof = UnspentProof::prove_unchecked(&block, tip_height + 1);
+    (header, proof)
 }
 
 pub fn mine_header_with_bits(

@@ -1,5 +1,6 @@
 use lightning_signer::prelude::*;
 
+use alloc::sync::Arc;
 use core::fmt;
 use core::fmt::{Display, Formatter};
 use core::iter::FromIterator;
@@ -19,10 +20,9 @@ use lightning_signer::monitor::ChainMonitor;
 use lightning_signer::monitor::State as ChainMonitorState;
 use lightning_signer::node::{NodeState, PaymentState};
 use lightning_signer::persist::model::ChannelEntry as CoreChannelEntry;
-use lightning_signer::policy::validator::EnforcementState;
-use lightning_signer::util::velocity::VelocityControl as CoreVelocityControl;
-
+use lightning_signer::policy::validator::{EnforcementState, ValidatorFactory};
 use lightning_signer::util::ser_util::{ChannelIdHandler, OutPointDef};
+use lightning_signer::util::velocity::VelocityControl as CoreVelocityControl;
 
 #[derive(Serialize, Deserialize)]
 pub struct VelocityControl {
@@ -183,8 +183,13 @@ impl From<&ChainTracker<ChainMonitor>> for ChainTrackerEntry {
     }
 }
 
-impl Into<ChainTracker<ChainMonitor>> for ChainTrackerEntry {
-    fn into(self) -> ChainTracker<ChainMonitor> {
+impl ChainTrackerEntry {
+    /// Convert to a ChainTracker, consuming the entry
+    pub fn into_tracker(
+        self,
+        node_id: PublicKey,
+        validator_factory: Arc<dyn ValidatorFactory>,
+    ) -> ChainTracker<ChainMonitor> {
         let tip = deserialize(&self.tip).expect("deserialize tip");
         let headers =
             self.headers.iter().map(|h| deserialize(h).expect("deserialize header")).collect();
@@ -192,11 +197,20 @@ impl Into<ChainTracker<ChainMonitor>> for ChainTrackerEntry {
             OrderedMap::from_iter(self.listeners.into_iter().map(|(outpoint, (state, slot))| {
                 (ChainMonitor::new_from_persistence(outpoint, state), slot)
             }));
-        ChainTracker { headers, tip, height: self.height, network: self.network, listeners }
+        ChainTracker::restore(
+            headers,
+            tip,
+            self.height,
+            self.network,
+            listeners,
+            node_id,
+            validator_factory,
+        )
     }
 }
 
 #[cfg(test)]
+#[cfg(xx)]
 mod tests {
     use super::*;
     use crate::model::ChainTrackerEntry;

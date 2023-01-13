@@ -3,13 +3,16 @@ extern crate scopeguard;
 use core::cmp::{max, min};
 
 use bitcoin::secp256k1::ecdsa::Signature;
-use bitcoin::secp256k1::{PublicKey, SecretKey};
-use bitcoin::{self, EcdsaSighashType, Network, Script, Sighash, Transaction};
+use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
+use bitcoin::{
+    self, BlockHeader, EcdsaSighashType, Network, OutPoint, Script, Sighash, Transaction,
+};
 use lightning::chain::keysinterface::InMemorySigner;
 use lightning::ln::chan_utils::{ClosingTransaction, HTLCOutputInCommitment, TxCreationKeys};
 use lightning::ln::PaymentHash;
 use log::debug;
 use serde_derive::{Deserialize, Serialize};
+use txoo::proof::UnspentProof;
 
 use crate::channel::{ChannelBalance, ChannelId, ChannelSetup, ChannelSlot};
 use crate::policy::Policy;
@@ -366,6 +369,24 @@ pub trait Validator {
 
         estate.set_next_counterparty_revoke_num(num);
         debug!("next_counterparty_revoke_num {} -> {}", current, num);
+        Ok(())
+    }
+
+    /// Validate a block and a TXOO proof for spent/unspent watched outputs
+    fn validate_block(
+        &self,
+        proof: &UnspentProof,
+        height: u32,
+        header: &BlockHeader,
+        outpoint_watches: &[OutPoint],
+    ) -> Result<(), ValidationError> {
+        let secp = Secp256k1::new();
+        let result = proof.verify(height, header, outpoint_watches, &secp);
+        if let Err(e) = result {
+            policy_err!(self, "policy-chain-validated", "invalid proof {:?}", e);
+        }
+        // TODO validate attestation by configured oracle
+        // TODO validate filter header chain
         Ok(())
     }
 }

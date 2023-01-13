@@ -2272,10 +2272,10 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 [[package]]
 name = "txoo"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "09f2c67efa97598cff09dae00787883408918fd6d8a1277246feee9e6f997147"
+source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#4645ca270b21274edba85d2e0303a4d33c8203c4"
 dependencies = [
  "bitcoin",
+ "core2",
  "log",
  "serde",
  "serde_yaml",
@@ -2284,8 +2284,7 @@ dependencies = [
 [[package]]
 name = "txoo-bitcoind-client"
 version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5366da4caa5af554deb3dc386c52cc5379cc0993ae32f23943627a4189064312"
+source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#4645ca270b21274edba85d2e0303a4d33c8203c4"
 dependencies = [
  "async-trait",
  "bitcoin",
@@ -2397,6 +2396,7 @@ dependencies = [
  "serde_with",
  "test-log",
  "tonic",
+ "txoo",
 ]
 
 [[package]]

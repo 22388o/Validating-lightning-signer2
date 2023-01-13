@@ -116,9 +116,9 @@ pub fn connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block) 
 
 fn do_connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block, skip_intermediaries: bool) {
     let height = node.best_block_info().1 + 1;
-    let proof = proof_for_block(block);
+    let proof = proof_for_block(block, height);
 
-    node.keys_manager.get_node().get_tracker().add_block(block.header, block.txdata.clone(), proof).unwrap();
+    node.keys_manager.get_node().get_tracker().add_block(block.header, proof).unwrap();
     if !skip_intermediaries {
         let txdata: Vec<_> = block.txdata.iter().enumerate().collect();
         match *node.connect_style.borrow() {

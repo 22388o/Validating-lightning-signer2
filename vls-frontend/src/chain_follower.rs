@@ -10,9 +10,11 @@ use url::Url;
 use bitcoin::{Block, Network, OutPoint, Transaction, TxOut, Txid};
 use lightning_signer::bitcoin;
 
-use bitcoind_client::follower::{Error, FollowWithProofAction, SourceWithProofFollower, Tracker};
+use bitcoind_client::follower::{Error, Tracker};
+use bitcoind_client::txoo_follower::{FollowWithProofAction, SourceWithTxooProofFollower};
 use bitcoind_client::BitcoindClient;
 
+use lightning_signer::txoo::source::Source;
 #[allow(unused_imports)]
 use lightning_signer::{debug_vals, short_function, vals_str};
 #[allow(unused_imports)]
@@ -24,7 +26,7 @@ use crate::{ChainTrack, HeartbeatMonitor};
 pub struct ChainFollower {
     tracker: Arc<dyn ChainTrack>,
     heartbeat_monitor: OnceCell<HeartbeatMonitor>,
-    follower: SourceWithProofFollower,
+    follower: SourceWithTxooProofFollower,
     state: Mutex<State>,
     update_interval: u64,
 }
@@ -58,7 +60,11 @@ macro_rules! abbrev {
 }
 
 impl ChainFollower {
-    pub async fn new(tracker: Arc<dyn ChainTrack>, rpc_url: &Url) -> Arc<ChainFollower> {
+    pub async fn new(
+        tracker: Arc<dyn ChainTrack>,
+        txoo_source: Box<dyn Source>,
+        rpc_url: &Url,
+    ) -> Arc<ChainFollower> {
         let client = BitcoindClient::new(rpc_url.clone()).await;
         let update_interval = match tracker.network() {
             Network::Regtest => 5000, // poll rapidly, automated testing
@@ -71,7 +77,7 @@ impl ChainFollower {
             tracker.network(),
             update_interval
         );
-        let follower = SourceWithProofFollower::new(Box::new(client));
+        let follower = SourceWithTxooProofFollower::new(Box::new(client), txoo_source);
         Arc::new(ChainFollower {
             tracker,
             heartbeat_monitor: OnceCell::new(),
@@ -145,7 +151,7 @@ impl ChainFollower {
                 self.do_heartbeat().await;
                 return Ok(ScheduleNext::Pause);
             }
-            FollowWithProofAction::BlockAdded(block, spv_proof) => {
+            FollowWithProofAction::BlockAdded(block, proof) => {
                 *state = State::Scanning;
                 let height = height0 + 1;
                 if height % 2016 == 0 {
@@ -153,21 +159,18 @@ impl ChainFollower {
                 }
 
                 // debug!("node {} at height {} adding {}", self.tracker.log_prefix(), height, hash);
-                let proof = spv_proof.merkle_proof();
-                self.tracker.add_block(block.header, spv_proof.txs, proof).await;
+                self.tracker.add_block(block.header, proof).await;
 
                 Ok(ScheduleNext::Immediate)
             }
-            FollowWithProofAction::BlockReorged(_block, spv_proof) => {
+            FollowWithProofAction::BlockReorged(_block, proof) => {
                 debug!(
                     "{} reorg at height {}, removing hash {}",
                     self.tracker.log_prefix(),
                     height0,
                     abbrev!(hash0, 12),
                 );
-                // The tracker will reverse the txs in remove_block, so leave normal order here.
-                let proof = spv_proof.merkle_proof();
-                self.tracker.remove_block(spv_proof.txs, proof).await;
+                self.tracker.remove_block(proof).await;
                 Ok(ScheduleNext::Immediate)
             }
         }

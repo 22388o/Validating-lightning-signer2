@@ -525,6 +525,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e153e1f1acaef8acc537e68b44906d2db6436e2b35ac2c6b42640fff91f00fd"
 
 [[package]]
+name = "txoo"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "09f2c67efa97598cff09dae00787883408918fd6d8a1277246feee9e6f997147"
+dependencies = [
+ "bitcoin",
+ "core2",
+ "log",
+ "serde",
+]
+
+[[package]]
 name = "unicode-ident"
 version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -550,6 +562,7 @@ dependencies = [
  "serde_bolt",
  "serde_derive",
  "serde_with",
+ "txoo",
 ]
 
 [[package]]
