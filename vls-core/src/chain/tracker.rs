@@ -1,6 +1,6 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
-use std::mem;
+use core::mem;
 
 use bitcoin::blockdata::constants::{genesis_block, DIFFCHANGE_INTERVAL};
 use bitcoin::consensus::{Decodable, Encodable};
