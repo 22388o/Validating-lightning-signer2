@@ -1,11 +1,14 @@
 use alloc::collections::VecDeque;
 use alloc::sync::Arc;
+use std::mem;
 
 use bitcoin::blockdata::constants::{genesis_block, DIFFCHANGE_INTERVAL};
+use bitcoin::consensus::{Decodable, Encodable};
 use bitcoin::hashes::hex::ToHex;
+use bitcoin::hashes::Hash;
 use bitcoin::secp256k1::PublicKey;
 use bitcoin::util::uint::Uint256;
-use bitcoin::{BlockHeader, Network, OutPoint, Transaction, Txid};
+use bitcoin::{BlockHeader, FilterHeader, Network, OutPoint, Transaction, Txid};
 
 use crate::policy::validator::ValidatorFactory;
 #[allow(unused_imports)]
@@ -67,12 +70,39 @@ pub struct ListenSlot {
     pub seen: OrderedSet<OutPoint>,
 }
 
+/// Block headers, including the usual bitcoin block header
+/// and the filter header
+#[derive(Clone)]
+pub struct Headers(pub BlockHeader, pub FilterHeader);
+
+impl Encodable for Headers {
+    fn consensus_encode<S: crate::io::Write + ?Sized>(
+        &self,
+        s: &mut S,
+    ) -> Result<usize, crate::io::Error> {
+        let mut len = 0;
+        len += self.0.consensus_encode(s)?;
+        len += self.1.consensus_encode(s)?;
+        Ok(len)
+    }
+}
+
+impl Decodable for Headers {
+    fn consensus_decode<D: crate::io::Read + ?Sized>(
+        d: &mut D,
+    ) -> Result<Self, bitcoin::consensus::encode::Error> {
+        let header = BlockHeader::consensus_decode(d)?;
+        let filter_header = FilterHeader::consensus_decode(d)?;
+        Ok(Headers(header, filter_header))
+    }
+}
+
 /// Track chain, with basic validation
 pub struct ChainTracker<L: ChainListener + Ord> {
     /// headers past the tip
-    pub headers: VecDeque<BlockHeader>,
+    pub headers: VecDeque<Headers>,
     /// tip header
-    pub tip: BlockHeader,
+    pub tip: Headers,
     /// height
     pub height: u32,
     /// The network
@@ -94,21 +124,23 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
     pub fn new(
         network: Network,
         height: u32,
-        tip: BlockHeader,
+        block_tip: BlockHeader,
         node_id: PublicKey,
         validator_factory: Arc<dyn ValidatorFactory>,
     ) -> Result<Self, Error> {
-        tip.validate_pow(&tip.target())
-            .map_err(|e| error_invalid_block!("validate pow {}: {}", tip.target(), e))?;
+        block_tip
+            .validate_pow(&block_tip.target())
+            .map_err(|e| error_invalid_block!("validate pow {}: {}", block_tip.target(), e))?;
         let headers = VecDeque::new();
         let listeners = OrderedMap::new();
+        let tip = Headers(block_tip, FilterHeader::all_zeros());
         Ok(ChainTracker { headers, tip, height, network, listeners, node_id, validator_factory })
     }
 
     /// Restore a tracker
     pub fn restore(
-        headers: VecDeque<BlockHeader>,
-        tip: BlockHeader,
+        headers: VecDeque<Headers>,
+        tip: Headers,
         height: u32,
         network: Network,
         listeners: OrderedMap<L, ListenSlot>,
@@ -131,12 +163,12 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
     }
 
     /// Current chain tip header
-    pub fn tip(&self) -> BlockHeader {
-        self.tip
+    pub fn tip(&self) -> &Headers {
+        &self.tip
     }
 
     /// Headers past the tip
-    pub fn headers(&self) -> &VecDeque<BlockHeader> {
+    pub fn headers(&self) -> &VecDeque<Headers> {
         &self.headers
     }
 
@@ -150,17 +182,19 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         if self.headers.is_empty() {
             return Err(Error::ReorgTooDeep);
         }
-        let header = self.tip;
-        self.validate_block(&header, &proof)?;
+        let prev_headers = &self.headers[0];
+
+        self.validate_block(self.height - 1, prev_headers, &self.tip, &proof)?;
         let txs = match proof.proof {
             ProofType::Filter(_, spv_proof) => spv_proof.txs,
             ProofType::Block(b) => b.txdata,
         };
         self.notify_listeners_remove(&txs);
 
-        self.tip = self.headers.pop_front().expect("already checked for empty");
+        let mut headers = self.headers.pop_front().expect("already checked");
+        mem::swap(&mut self.tip, &mut headers);
         self.height -= 1;
-        Ok(header)
+        Ok(headers.0)
     }
 
     fn notify_listeners_remove(&mut self, txs: &[Transaction]) {
@@ -206,7 +240,9 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
 
     /// Add a block, which becomes the new tip
     pub fn add_block(&mut self, header: BlockHeader, proof: UnspentProof) -> Result<(), Error> {
-        self.validate_block(&header, &proof)?;
+        let filter_header = proof.filter_header();
+        let headers = Headers(header, filter_header);
+        self.validate_block(self.height, &self.tip, &headers, &proof)?;
         let txs = match proof.proof {
             ProofType::Filter(_, spv_proof) => spv_proof.txs,
             ProofType::Block(b) => b.txdata,
@@ -215,8 +251,8 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         self.notify_listeners_add(&txs);
 
         self.headers.truncate(Self::MAX_REORG_SIZE - 1);
-        self.headers.push_front(self.tip);
-        self.tip = header;
+        self.headers.push_front(self.tip.clone());
+        self.tip = Headers(header, filter_header);
         self.height += 1;
         Ok(())
     }
@@ -286,42 +322,52 @@ impl<L: ChainListener + Ord> ChainTracker<L> {
         (txid_watches.into_iter().collect(), outpoint_watches.into_iter().collect())
     }
 
-    fn validate_block(&self, header: &BlockHeader, proof: &UnspentProof) -> Result<(), Error> {
+    fn validate_block(
+        &self,
+        height: u32,
+        prev_headers: &Headers,
+        headers: &Headers,
+        proof: &UnspentProof,
+    ) -> Result<(), Error> {
+        let header = &headers.0;
+        let prev_header = &prev_headers.0;
         // Check hash is correctly chained
-        if header.prev_blockhash != self.tip.block_hash() {
+        if header.prev_blockhash != prev_header.block_hash() {
             return Err(error_invalid_chain!(
                 "header.prev_blockhash {} != self.tip.block_hash {}",
                 header.prev_blockhash.to_hex(),
-                self.tip.block_hash().to_hex()
+                prev_header.block_hash().to_hex()
             ));
         }
         // Ensure correctly mined (hash is under target)
         header.validate_pow(&header.target()).map_err(|_| Error::InvalidBlock)?;
         if self.network == Network::Testnet
             && header.target() == max_target(self.network)
-            && header.time > self.tip.time + 60 * 20
+            && header.time > prev_header.time + 60 * 20
         {
             // special case for Testnet - 20 minute rule
-        } else if (self.height + 1) % DIFFCHANGE_INTERVAL == 0 {
-            let prev_target = self.tip.target();
+        } else if (height + 1) % DIFFCHANGE_INTERVAL == 0 {
+            let prev_target = prev_header.target();
             let target = header.target();
             let network = self.network;
             validate_retarget(prev_target, target, network)?;
         } else {
-            if header.bits != self.tip.bits && self.network != Network::Testnet {
+            if header.bits != prev_header.bits && self.network != Network::Testnet {
                 return Err(error_invalid_chain!(
                     "header.bits {} != self.tip.bits {}",
                     header.bits,
-                    self.tip.bits
+                    prev_header.bits
                 ));
             }
         }
 
+        // FIXME is this correct for both add and remove?
         let (_, outpoint_watches) = self.get_all_forward_watches();
 
         let validator = self.validator_factory.make_validator(self.network, self.node_id, None);
+        let prev_filter_header = &prev_headers.1;
         validator
-            .validate_block(proof, self.height + 1, header, &outpoint_watches)
+            .validate_block(proof, height + 1, header, prev_filter_header, &outpoint_watches)
             .map_err(|e| error_invalid_proof!("{:?}", e))?;
         Ok(())
     }

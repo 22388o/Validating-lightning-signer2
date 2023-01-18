@@ -41,6 +41,7 @@ use txoo::proof::UnspentProof;
 use super::key_utils::{
     make_test_bitcoin_pubkey, make_test_counterparty_points, make_test_privkey, make_test_pubkey,
 };
+use crate::chain::tracker::Headers;
 use crate::channel::{
     Channel, ChannelBalance, ChannelBase, ChannelId, ChannelSetup, ChannelStub, CommitmentType,
     TypedSignature,
@@ -1597,12 +1598,7 @@ pub fn make_block(tip: BlockHeader, txs: Vec<Transaction>) -> Block {
     Block { header, txdata: txs }
 }
 
-pub fn proof_for_block(block: &Block, height: u32) -> UnspentProof {
-    UnspentProof::prove_unchecked(&block, height)
-}
-
-pub fn make_testnet_header(tip: BlockHeader, tip_height: u32) -> (BlockHeader, UnspentProof) {
-    // use lower bits so it doesn't take forever
+pub fn make_testnet_header(tip: &Headers, tip_height: u32) -> (BlockHeader, UnspentProof) {
     let txs: Vec<Transaction> = vec![Transaction {
         version: 0,
         lock_time: PackedLockTime(tip_height + 1),
@@ -1613,9 +1609,9 @@ pub fn make_testnet_header(tip: BlockHeader, tip_height: u32) -> (BlockHeader, U
     let merkle_root = bitcoin_merkle_root(tx_ids.into_iter()).unwrap().into();
     let regtest_genesis = genesis_block(Network::Regtest);
     let bits = regtest_genesis.header.bits;
-    let header = mine_header_with_bits(tip.block_hash(), merkle_root, bits);
+    let header = mine_header_with_bits(tip.0.block_hash(), merkle_root, bits);
     let block = bitcoin::Block { header, txdata: txs };
-    let proof = UnspentProof::prove_unchecked(&block, tip_height + 1);
+    let proof = UnspentProof::prove_unchecked(&block, &tip.1, tip_height + 1);
     (header, proof)
 }
 

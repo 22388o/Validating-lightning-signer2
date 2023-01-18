@@ -2272,7 +2272,7 @@ checksum = "59547bce71d9c38b83d9c0e92b6066c4253371f15005def0c30d9657f50c7642"
 [[package]]
 name = "txoo"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#4645ca270b21274edba85d2e0303a4d33c8203c4"
+source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#dae336636fcdd3afbd517c2ebed737967cfcd6c7"
 dependencies = [
  "bitcoin",
  "core2",
@@ -2284,7 +2284,7 @@ dependencies = [
 [[package]]
 name = "txoo-bitcoind-client"
 version = "0.1.0"
-source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#4645ca270b21274edba85d2e0303a4d33c8203c4"
+source = "git+https://gitlab.com/lightning-signer/txoo?branch=2023-01-encoding#dae336636fcdd3afbd517c2ebed737967cfcd6c7"
 dependencies = [
  "async-trait",
  "bitcoin",

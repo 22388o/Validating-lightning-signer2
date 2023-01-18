@@ -82,7 +82,7 @@ impl ChainTrack for NodeFront {
 
     async fn tip_info(&self) -> (u32, BlockHash) {
         let tracker = self.node.get_tracker();
-        (tracker.height(), tracker.tip().block_hash())
+        (tracker.height(), tracker.tip().0.block_hash())
     }
 
     async fn forward_watches(&self) -> (Vec<Txid>, Vec<OutPoint>) {

@@ -7,7 +7,7 @@ use crate::Rc;
 use crate::sync::Mutex;
 
 use bitcoin;
-use bitcoin::{Block, Network, PackedLockTime, Transaction, TxOut};
+use bitcoin::{Block, FilterHeader, Network, PackedLockTime, Transaction, TxOut};
 use bitcoin::blockdata::block::BlockHeader;
 use bitcoin::blockdata::constants::genesis_block;
 use bitcoin::hash_types::BlockHash;
@@ -37,13 +37,15 @@ use ln::msgs::{ChannelMessageHandler, RoutingMessageHandler};
 use util::events::{Event, MessageSendEvent, MessageSendEventsProvider};
 
 use crate::util::loopback::LoopbackSignerKeysInterface;
-use crate::util::test_utils::{make_block, proof_for_block, TestChainMonitor, TestPersister};
+use crate::util::test_utils::{make_block, TestChainMonitor, TestPersister};
 
 use core::cmp;
 use std::sync::Arc;
 use bitcoin::bech32::ToBase32;
 use lightning::chain::keysinterface::KeysInterface;
 use log::info;
+use txoo::proof::UnspentProof;
+use crate::chain::tracker::Headers;
 
 pub const CHAN_CONFIRM_DEPTH: u32 = 10;
 
@@ -71,11 +73,12 @@ pub fn confirm_transaction_at<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, tx: &T
         txs.push(Transaction { version: 0, lock_time: PackedLockTime(i), input: Vec::new(), output: Vec::new() });
     }
     txs.push(tx.clone());
-    let block = make_block(tip_for_node(node), txs);
-    connect_block(node, &block);
+    let headers = tip_for_node(node);
+    let block = make_block(headers.0, txs);
+    connect_block(node, &block, &headers.1);
 }
 
-pub fn tip_for_node(node: &Node) -> BlockHeader {
+pub fn tip_for_node(node: &Node) -> Headers {
     let node = node.keys_manager.get_node();
     let tracker = node.get_tracker();
     tracker.tip().clone()
@@ -94,7 +97,8 @@ pub fn connect_blocks<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, depth: u32) ->
         input: vec![],
         output: vec![]
     };
-    let mut block = make_block(tip_for_node(node), vec![coinbase]);
+    let mut headers = tip_for_node(node);
+    let mut block = make_block(headers.0.clone(), vec![coinbase]);
     assert!(depth >= 1);
     for d in 0..depth - 1 {
         let coinbase = Transaction {
@@ -103,20 +107,21 @@ pub fn connect_blocks<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, depth: u32) ->
             input: vec![],
             output: vec![]
         };
-        do_connect_block(node, &block, skip_intermediaries);
-        block = make_block(tip_for_node(node), vec![coinbase]);
+        do_connect_block(node, &block, &headers.1, skip_intermediaries);
+        headers = tip_for_node(node);
+        block = make_block(headers.0.clone(), vec![coinbase]);
     }
-    connect_block(node, &block);
+    connect_block(node, &block, &headers.1);
     block.header.block_hash()
 }
 
-pub fn connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block) {
-    do_connect_block(node, block, false);
+pub fn connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block, prev_filter_header: &FilterHeader) {
+    do_connect_block(node, block, prev_filter_header, false);
 }
 
-fn do_connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block, skip_intermediaries: bool) {
+fn do_connect_block<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, block: &Block, prev_filter_header: &FilterHeader, skip_intermediaries: bool) {
     let height = node.best_block_info().1 + 1;
-    let proof = proof_for_block(block, height);
+    let proof = UnspentProof::prove_unchecked(block, prev_filter_header, height);
 
     node.keys_manager.get_node().get_tracker().add_block(block.header, proof).unwrap();
     if !skip_intermediaries {

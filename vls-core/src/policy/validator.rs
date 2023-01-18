@@ -5,7 +5,8 @@ use core::cmp::{max, min};
 use bitcoin::secp256k1::ecdsa::Signature;
 use bitcoin::secp256k1::{PublicKey, Secp256k1, SecretKey};
 use bitcoin::{
-    self, BlockHeader, EcdsaSighashType, Network, OutPoint, Script, Sighash, Transaction,
+    self, BlockHeader, EcdsaSighashType, FilterHeader, Network, OutPoint, Script, Sighash,
+    Transaction,
 };
 use lightning::chain::keysinterface::InMemorySigner;
 use lightning::ln::chan_utils::{ClosingTransaction, HTLCOutputInCommitment, TxCreationKeys};
@@ -378,10 +379,11 @@ pub trait Validator {
         proof: &UnspentProof,
         height: u32,
         header: &BlockHeader,
+        prev_filter_header: &FilterHeader,
         outpoint_watches: &[OutPoint],
     ) -> Result<(), ValidationError> {
         let secp = Secp256k1::new();
-        let result = proof.verify(height, header, outpoint_watches, &secp);
+        let result = proof.verify(height, header, prev_filter_header, outpoint_watches, &secp);
         if let Err(e) = result {
             policy_err!(self, "policy-chain-validated", "invalid proof {:?}", e);
         }

@@ -516,7 +516,7 @@ impl Handler for RootHandler {
                 let tracker = self.node.get_tracker();
                 Ok(Box::new(msgs::TipInfoReply {
                     height: tracker.height(),
-                    block_hash: BlockHash(tracker.tip().block_hash()[..].try_into().unwrap()),
+                    block_hash: BlockHash(tracker.tip().0.block_hash()[..].try_into().unwrap()),
                 }))
             }
             Message::ForwardWatches(_) => {

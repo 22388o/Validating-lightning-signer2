@@ -1224,9 +1224,9 @@ impl Node {
         let tip = tracker.tip();
         let current_timestamp = self.clock.now().as_secs() as u32;
         let heartbeat = Heartbeat {
-            chain_tip: tip.block_hash(),
+            chain_tip: tip.0.block_hash(),
             chain_height: tracker.height(),
-            chain_timestamp: tip.time,
+            chain_timestamp: tip.0.time,
             current_timestamp,
         };
         let ser_heartbeat = heartbeat.encode();
