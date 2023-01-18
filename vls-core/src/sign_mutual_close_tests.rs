@@ -146,7 +146,10 @@ mod tests {
 
         assert_eq!(
             node.channel_balance(),
-            ChannelBalanceBuilder::new().claimable(2_000_000).channel_count(1).build()
+            ChannelBalanceBuilder::new()
+                .claimable(if outbound { 1_998_000 } else { 2_000_000 })
+                .channel_count(1)
+                .build()
         );
 
         let (tx, sig) = node.with_ready_channel(&channel_id, |chan| {

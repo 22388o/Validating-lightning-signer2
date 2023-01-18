@@ -424,7 +424,7 @@ fn claim_htlc_outputs_single_tx() {
 
     let chan_1 = create_announced_chan_between_nodes(&nodes, 0, 1, channelmanager::provided_init_features(), channelmanager::provided_init_features());
 
-    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).channel_count(1).build());
+    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_817).channel_count(1).build());
     assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().channel_count(1).build());
 
     // Rebalance the network to generate htlc in the two directions
@@ -527,16 +527,16 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     let chan_ab = create_announced_chan_between_nodes_with_value(&nodes, 0, 1, 100000, 10001, channelmanager::provided_init_features(), channelmanager::provided_init_features());
     create_announced_chan_between_nodes_with_value(&nodes, 1, 2, 100000, 10001, channelmanager::provided_init_features(), channelmanager::provided_init_features());
 
-    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).channel_count(1).build());
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(100_000).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_806).channel_count(1).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_806).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().channel_count(1).build());
 
     // Steps (1) and (2):
     // Send an HTLC Alice --> Bob --> Carol, but Carol doesn't settle the HTLC back.
     let (payment_preimage, payment_hash, _payment_secret) = route_payment(&nodes[0], &vec!(&nodes[1], &nodes[2]), 3_000_000);
 
-    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(100_000).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_763).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().received_htlc(3_000).received_htlc_count(1).channel_count(1).build());
 
     // Check that Alice's commitment transaction now contains an output for this HTLC.
@@ -575,11 +575,11 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     }
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(100_000).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_763).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().received_htlc(3_000).received_htlc_count(1).channel_count(1).build());
 
     // Step (5):
@@ -596,11 +596,11 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     assert_eq!(carol_updates.update_fulfill_htlcs.len(), 1);
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(100_000).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_763).received_htlc(3_001).received_htlc_count(1).offered_htlc(3_000).offered_htlc_count(1).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().received_htlc(3_000).received_htlc_count(1).channel_count(1).build());
 
     nodes[1].node.handle_update_fulfill_htlc(&nodes[2].node.get_our_node_id(), &carol_updates.update_fulfill_htlcs[0]);
@@ -622,14 +622,14 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     check_added_monitors!(nodes[1], 2);
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
     if go_onchain_before_fulfill || !broadcast_alice {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     } else {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_991).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_807).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
     }
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().received_htlc(3_000).received_htlc_count(1).channel_count(1).build());
 
@@ -651,14 +651,14 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     };
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
     if go_onchain_before_fulfill || !broadcast_alice {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     } else {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_991).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_807).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
     }
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().received_htlc(3_000).received_htlc_count(1).channel_count(1).build());
 
@@ -668,14 +668,14 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     check_added_monitors!(nodes[2], 1);
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
     if go_onchain_before_fulfill || !broadcast_alice {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     } else {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_991).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_807).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
     }
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().claimable(3_010).channel_count(1).build());
 
@@ -692,14 +692,14 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     check_added_monitors!(nodes[1], 1);
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
     if go_onchain_before_fulfill || !broadcast_alice {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     } else {
-        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_991).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
+        assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(99_807).received_htlc(3_001).received_htlc_count(1).channel_count(2).build());
     }
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().claimable(3_010).channel_count(1).build());
 
@@ -732,11 +732,11 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     }
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().claimable(3_010).channel_count(1).build());
 
     // Step (6):
@@ -769,11 +769,11 @@ fn do_test_onchain_htlc_settlement_after_close(broadcast_alice: bool, go_onchain
     }
 
     if broadcast_alice {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(100_000).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().offered_htlc(3_001).offered_htlc_count(1).sweeping(99_763).channel_count(1).build());
     } else {
-        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(100_000).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
+        assert_eq!(channel_balance(&nodes[0]), ChannelBalanceBuilder::new().claimable(99_763).offered_htlc(3_001).offered_htlc_count(1).channel_count(1).build());
     }
-    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_990).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
+    assert_eq!(channel_balance(&nodes[1]), ChannelBalanceBuilder::new().claimable(96_806).received_htlc(3_001).received_htlc_count(1).sweeping(3_001).channel_count(2).build());
     assert_eq!(channel_balance(&nodes[2]), ChannelBalanceBuilder::new().claimable(3_010).channel_count(1).build());
 }
 

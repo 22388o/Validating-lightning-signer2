@@ -396,15 +396,15 @@ impl CommitmentInfo2 {
     pub fn claimable_balance<T: PreimageMap>(
         &self,
         preimage_map: &T,
-        is_outbound: bool,
-        channel_value: u64,
+        _is_outbound: bool,
+        _channel_value: u64,
     ) -> u64 {
         let mut balance = self.value_to_parties().0;
-        if is_outbound {
-            let total_value = self.total_value();
-            let fee = channel_value.checked_sub(total_value).unwrap();
-            balance = balance.checked_add(fee).unwrap();
-        }
+        // if is_outbound {
+        //     let total_value = self.total_value();
+        //     let fee = channel_value.checked_sub(total_value).unwrap();
+        //     balance = balance.checked_add(fee).unwrap();
+        // }
         let (offered, received) = if self.is_counterparty_broadcaster {
             (&self.received_htlcs, &self.offered_htlcs)
         } else {
