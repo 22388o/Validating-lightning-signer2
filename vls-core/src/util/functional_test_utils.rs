@@ -17,7 +17,7 @@ use bitcoin::hashes::hex::ToHex;
 use bitcoin::secp256k1::PublicKey;
 use chain::transaction::OutPoint;
 use lightning::chain;
-use lightning::chain::{Confirm, Listen, chaininterface};
+use lightning::chain::{Confirm, Listen, chaininterface, keysinterface::EntropySource};
 use lightning::ln;
 use lightning::ln::channelmanager::{ChainParameters, MIN_FINAL_CLTV_EXPIRY, PaymentId};
 use lightning::chain::BestBlock;
@@ -31,7 +31,6 @@ use lightning::util::events::PaymentPurpose;
 use lightning::routing::gossip::{NetworkGraph, P2PGossipSync};
 use ln::{PaymentHash, PaymentPreimage};
 use ln::channelmanager::ChannelManager;
-use ln::features::InitFeatures;
 use ln::msgs;
 use ln::msgs::{ChannelMessageHandler, RoutingMessageHandler};
 use util::events::{Event, MessageSendEvent, MessageSendEventsProvider};
@@ -42,7 +41,6 @@ use crate::util::test_utils::{make_block, TestChainMonitor, TestPersister};
 use core::cmp;
 use std::sync::Arc;
 use bitcoin::bech32::ToBase32;
-use lightning::chain::keysinterface::KeysInterface;
 use log::info;
 use txoo::proof::UnspentProof;
 use crate::chain::tracker::Headers;
@@ -169,7 +167,7 @@ pub struct TestChanMonCfg {
     pub chain_source: test_utils::TestChainSource,
     pub persister: TestPersister,
     pub logger: Arc<test_utils::TestLogger>,
-    pub network_graph: NetworkGraph<Arc<test_utils::TestLogger>>,
+    pub network_graph: Arc<NetworkGraph<Arc<test_utils::TestLogger>>>,
 }
 
 pub struct NodeCfg<'a> {
@@ -179,7 +177,7 @@ pub struct NodeCfg<'a> {
     pub chain_monitor: TestChainMonitor<'a>,
     pub keys_manager: LoopbackSignerKeysInterface,
     pub logger: Arc<test_utils::TestLogger>,
-    pub network_graph: &'a NetworkGraph<Arc<test_utils::TestLogger>>,
+    pub network_graph: Arc<NetworkGraph<Arc<test_utils::TestLogger>>>,
     pub node_seed: [u8; 32],
 }
 
@@ -192,11 +190,14 @@ pub struct Node<'a, 'b: 'a, 'c: 'b> {
         &'b TestChainMonitor<'c>,
         &'c TestBroadcaster,
         &'b LoopbackSignerKeysInterface,
+        &'b LoopbackSignerKeysInterface,
+        &'b LoopbackSignerKeysInterface,
         &'c test_utils::TestFeeEstimator,
+        Arc<TestRouter>,
         Arc<test_utils::TestLogger>,
     >,
-    pub network_graph: &'c NetworkGraph<Arc<test_utils::TestLogger>>,
-    pub gossip_sync: P2PGossipSync<&'c NetworkGraph<Arc<test_utils::TestLogger>>, &'c test_utils::TestChainSource, Arc<test_utils::TestLogger>>,
+    pub network_graph: Arc<NetworkGraph<Arc<test_utils::TestLogger>>>,
+    pub gossip_sync: P2PGossipSync<Arc<NetworkGraph<Arc<test_utils::TestLogger>>>, &'c test_utils::TestChainSource, Arc<test_utils::TestLogger>>,
     pub node_seed: [u8; 32],
     pub network_payment_count: Rc<RefCell<u8>>,
     pub network_chan_count: Rc<RefCell<u32>>,
@@ -228,8 +229,6 @@ impl<'a, 'b, 'c> Drop for Node<'a, 'b, 'c> {
 pub fn create_chan_between_nodes<'a, 'b, 'c, 'd>(
     node_a: &'a Node<'b, 'c, 'd>,
     node_b: &'a Node<'b, 'c, 'd>,
-    a_flags: InitFeatures,
-    b_flags: InitFeatures,
 ) -> (
     msgs::ChannelAnnouncement,
     msgs::ChannelUpdate,
@@ -237,7 +236,7 @@ pub fn create_chan_between_nodes<'a, 'b, 'c, 'd>(
     [u8; 32],
     Transaction,
 ) {
-    create_chan_between_nodes_with_value(node_a, node_b, 100000, 10001, a_flags, b_flags)
+    create_chan_between_nodes_with_value(node_a, node_b, 100000, 10001)
 }
 
 pub fn create_chan_between_nodes_with_value<'a, 'b, 'c, 'd>(
@@ -245,8 +244,6 @@ pub fn create_chan_between_nodes_with_value<'a, 'b, 'c, 'd>(
     node_b: &'a Node<'b, 'c, 'd>,
     channel_value: u64,
     push_msat: u64,
-    a_flags: InitFeatures,
-    b_flags: InitFeatures,
 ) -> (
     msgs::ChannelAnnouncement,
     msgs::ChannelUpdate,
@@ -259,8 +256,6 @@ pub fn create_chan_between_nodes_with_value<'a, 'b, 'c, 'd>(
         node_b,
         channel_value,
         push_msat,
-        a_flags,
-        b_flags,
     );
     let (announcement, as_update, bs_update) =
         create_chan_between_nodes_with_value_b(node_a, node_b, &funding_locked);
@@ -412,10 +407,10 @@ pub fn create_funding_transaction<'a, 'b, 'c>(node: &Node<'a, 'b, 'c>, expected_
     }
 }
 
-pub fn create_chan_between_nodes_with_value_init<'a, 'b, 'c>(node_a: &Node<'a, 'b, 'c>, node_b: &Node<'a, 'b, 'c>, channel_value: u64, push_msat: u64, a_flags: InitFeatures, b_flags: InitFeatures) -> Transaction {
+pub fn create_chan_between_nodes_with_value_init<'a, 'b, 'c>(node_a: &Node<'a, 'b, 'c>, node_b: &Node<'a, 'b, 'c>, channel_value: u64, push_msat: u64) -> Transaction {
     node_a.node.create_channel(node_b.node.get_our_node_id(), channel_value, push_msat, 42, None).unwrap();
-    node_b.node.handle_open_channel(&node_a.node.get_our_node_id(), a_flags, &get_event_msg!(node_a, MessageSendEvent::SendOpenChannel, node_b.node.get_our_node_id()));
-    node_a.node.handle_accept_channel(&node_b.node.get_our_node_id(), b_flags, &get_event_msg!(node_b, MessageSendEvent::SendAcceptChannel, node_a.node.get_our_node_id()));
+    node_b.node.handle_open_channel(&node_a.node.get_our_node_id(), &get_event_msg!(node_a, MessageSendEvent::SendOpenChannel, node_b.node.get_our_node_id()));
+    node_a.node.handle_accept_channel(&node_b.node.get_our_node_id(), &get_event_msg!(node_b, MessageSendEvent::SendAcceptChannel, node_a.node.get_our_node_id()));
 
     let (temporary_channel_id, tx, funding_output) = create_funding_transaction(node_a, channel_value, 42);
 
@@ -484,8 +479,8 @@ pub fn create_chan_between_nodes_with_value_confirm<'a, 'b, 'c, 'd>(node_a: &'a 
     create_chan_between_nodes_with_value_confirm_second(node_b, node_a)
 }
 
-pub fn create_chan_between_nodes_with_value_a<'a, 'b, 'c, 'd>(node_a: &'a Node<'b, 'c, 'd>, node_b: &'a Node<'b, 'c, 'd>, channel_value: u64, push_msat: u64, a_flags: InitFeatures, b_flags: InitFeatures) -> ((msgs::ChannelReady, msgs::AnnouncementSignatures), [u8; 32], Transaction) {
-    let tx = create_chan_between_nodes_with_value_init(node_a, node_b, channel_value, push_msat, a_flags, b_flags);
+pub fn create_chan_between_nodes_with_value_a<'a, 'b, 'c, 'd>(node_a: &'a Node<'b, 'c, 'd>, node_b: &'a Node<'b, 'c, 'd>, channel_value: u64, push_msat: u64) -> ((msgs::ChannelReady, msgs::AnnouncementSignatures), [u8; 32], Transaction) {
+    let tx = create_chan_between_nodes_with_value_init(node_a, node_b, channel_value, push_msat);
     let (msgs, chan_id) = create_chan_between_nodes_with_value_confirm(node_a, node_b, &tx);
     (msgs, chan_id, tx)
 }
@@ -522,8 +517,8 @@ pub fn create_chan_between_nodes_with_value_b<'a, 'b, 'c>(node_a: &Node<'a, 'b, 
     ((*announcement).clone(), (*as_update).clone(), (*bs_update).clone())
 }
 
-pub fn create_announced_chan_between_nodes<'a, 'b, 'c, 'd>(nodes: &'a Vec<Node<'b, 'c, 'd>>, a: usize, b: usize, a_flags: InitFeatures, b_flags: InitFeatures) -> (msgs::ChannelUpdate, msgs::ChannelUpdate, [u8; 32], Transaction) {
-    create_announced_chan_between_nodes_with_value(nodes, a, b, 100000, 0, a_flags, b_flags)
+pub fn create_announced_chan_between_nodes<'a, 'b, 'c, 'd>(nodes: &'a Vec<Node<'b, 'c, 'd>>, a: usize, b: usize) -> (msgs::ChannelUpdate, msgs::ChannelUpdate, [u8; 32], Transaction) {
+    create_announced_chan_between_nodes_with_value(nodes, a, b, 100000, 0)
 }
 
 pub fn expect_channel_ready_event<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, expected_counterparty_node_id: &PublicKey) {
@@ -537,8 +532,8 @@ pub fn expect_channel_ready_event<'a, 'b, 'c, 'd>(node: &'a Node<'b, 'c, 'd>, ex
     }
 }
 
-pub fn create_announced_chan_between_nodes_with_value<'a, 'b, 'c, 'd>(nodes: &'a Vec<Node<'b, 'c, 'd>>, a: usize, b: usize, channel_value: u64, push_msat: u64, a_flags: InitFeatures, b_flags: InitFeatures) -> (msgs::ChannelUpdate, msgs::ChannelUpdate, [u8; 32], Transaction) {
-    let chan_announcement = create_chan_between_nodes_with_value(&nodes[a], &nodes[b], channel_value, push_msat, a_flags, b_flags);
+pub fn create_announced_chan_between_nodes_with_value<'a, 'b, 'c, 'd>(nodes: &'a Vec<Node<'b, 'c, 'd>>, a: usize, b: usize, channel_value: u64, push_msat: u64) -> (msgs::ChannelUpdate, msgs::ChannelUpdate, [u8; 32], Transaction) {
+    let chan_announcement = create_chan_between_nodes_with_value(&nodes[a], &nodes[b], channel_value, push_msat);
     update_nodes_with_chan_announce(nodes, a, b, &chan_announcement.0, &chan_announcement.1, &chan_announcement.2);
     expect_channel_ready_event(&nodes[b], &nodes[a].node.get_our_node_id());
     (chan_announcement.1, chan_announcement.2, chan_announcement.3, chan_announcement.4)
@@ -649,7 +644,7 @@ pub fn close_channel<'a, 'b, 'c>(outbound_node: &Node<'a, 'b, 'c>, inbound_node:
 
     let cp_id = node_b.get_our_node_id();
     node_a.close_channel(channel_id, &cp_id).unwrap();
-    node_b.handle_shutdown(&node_a.get_our_node_id(), &channelmanager::provided_init_features(), &get_event_msg!(struct_a, MessageSendEvent::SendShutdown, node_b.get_our_node_id()));
+    node_b.handle_shutdown(&node_a.get_our_node_id(), &get_event_msg!(struct_a, MessageSendEvent::SendShutdown, node_b.get_our_node_id()));
 
     let events_1 = node_b.get_and_clear_pending_msg_events();
     assert!(events_1.len() >= 1);
@@ -674,7 +669,7 @@ pub fn close_channel<'a, 'b, 'c>(outbound_node: &Node<'a, 'b, 'c>, inbound_node:
         })
     };
 
-    node_a.handle_shutdown(&node_b.get_our_node_id(), &channelmanager::provided_init_features(), &shutdown_b);
+    node_a.handle_shutdown(&node_b.get_our_node_id(), &shutdown_b);
     let (as_update, bs_update) = if close_inbound_first {
         assert!(node_a.get_and_clear_pending_msg_events().is_empty());
         node_a.handle_closing_signed(&node_b.get_our_node_id(), &closing_signed_b.unwrap());
@@ -843,7 +838,6 @@ macro_rules! get_route {
             final_value_msat: $recv_value,
             final_cltv_expiry_delta: TEST_FINAL_CLTV
         };
-		use lightning::chain::keysinterface::KeysInterface;
 		let scorer = lightning::util::test_utils::TestScorer::with_penalty(0);
 		let keys_manager = lightning::util::test_utils::TestKeysInterface::new(&[0u8; 32], bitcoin::network::constants::Network::Testnet);
 		let random_seed_bytes = keys_manager.get_secure_random_bytes();
@@ -943,13 +937,22 @@ macro_rules! expect_pending_htlcs_forwardable_ignore {
 ///
 #[macro_export]
 macro_rules! expect_payment_forwarded {
-	($node: expr, $expected_fee: expr, $upstream_force_closed: expr) => {
+	($node: expr, $prev_node: expr, $next_node: expr, $expected_fee: expr, $upstream_force_closed: expr, $downstream_force_closed: expr) => {
 		let events = $node.node.get_and_clear_pending_events();
 		assert_eq!(events.len(), 1);
 		match events[0] {
-			Event::PaymentForwarded { fee_earned_msat, claim_from_onchain_tx, .. } => {
+			Event::PaymentForwarded { fee_earned_msat, prev_channel_id, claim_from_onchain_tx, next_channel_id } => {
 				assert_eq!(fee_earned_msat, $expected_fee);
-				assert_eq!(claim_from_onchain_tx, $upstream_force_closed);
+				if fee_earned_msat.is_some() {
+					// Is the event prev_channel_id in one of the channels between the two nodes?
+					assert!($node.node.list_channels().iter().any(|x| x.counterparty.node_id == $prev_node.node.get_our_node_id() && x.channel_id == prev_channel_id.unwrap()));
+				}
+				// We check for force closures since a force closed channel is removed from the
+				// node's channel list
+				if !$downstream_force_closed {
+					assert!($node.node.list_channels().iter().any(|x| x.counterparty.node_id == $next_node.node.get_our_node_id() && x.channel_id == next_channel_id.unwrap()));
+				}
+				assert_eq!(claim_from_onchain_tx, $downstream_force_closed);
 			},
 			_ => panic!("Unexpected event"),
 		}
@@ -1187,8 +1190,7 @@ pub fn claim_payment<'a, 'b, 'c>(origin_node: &Node<'a, 'b, 'c>, expected_route:
 pub const TEST_FINAL_CLTV: u32 = 70;
 
 pub fn route_payment<'a, 'b, 'c>(origin_node: &Node<'a, 'b, 'c>, expected_route: &[&Node<'a, 'b, 'c>], recv_value: u64) -> (PaymentPreimage, PaymentHash, PaymentSecret) {
-    let payment_params = PaymentParameters::from_node_id(expected_route.last().unwrap().node.get_our_node_id())
-        .with_features(channelmanager::provided_invoice_features());
+    let payment_params = PaymentParameters::from_node_id(expected_route.last().unwrap().node.get_our_node_id());
     let route = get_route!(origin_node, payment_params, recv_value, TEST_FINAL_CLTV).unwrap();
     assert_eq!(route.paths.len(), 1);
     assert_eq!(route.paths[0].len(), expected_route.len());
@@ -1224,7 +1226,7 @@ pub fn create_chanmon_cfgs<'a>(node_count: usize) -> Vec<TestChanMonCfg> {
         let chain_source = test_utils::TestChainSource::new(Network::Regtest);
         let logger = Arc::new(test_utils::TestLogger::with_id(format!("node {}", i)));
         let persister = TestPersister::new();
-        let network_graph = NetworkGraph::new(chain_source.genesis_hash, logger.clone());
+        let network_graph = Arc::new(NetworkGraph::new(chain_source.genesis_hash, logger.clone()));
         let cfg = TestChanMonCfg {
             tx_broadcaster,
             fee_estimator,
@@ -1239,6 +1241,36 @@ pub fn create_chanmon_cfgs<'a>(node_count: usize) -> Vec<TestChanMonCfg> {
     chan_mon_cfgs
 }
 
+pub struct TestRouter {
+	pub network_graph: Arc<NetworkGraph<Arc<test_utils::TestLogger>>>,
+}
+
+impl TestRouter {
+	pub fn new(network_graph: Arc<NetworkGraph<Arc<test_utils::TestLogger>>>) -> Self {
+		Self { network_graph }
+	}
+}
+
+use lightning::routing::router::{Router, InFlightHtlcs, find_route, ScorerAccountingForInFlightHtlcs, RouteHop};
+
+impl Router for TestRouter {
+	fn find_route(
+		&self, payer: &PublicKey, params: &RouteParameters, first_hops: Option<&[&channelmanager::ChannelDetails]>,
+		inflight_htlcs: &InFlightHtlcs
+	) -> Result<Route, msgs::LightningError> {
+		let logger = test_utils::TestLogger::new();
+		find_route(
+			payer, params, &self.network_graph, first_hops, Arc::new(logger),
+			&ScorerAccountingForInFlightHtlcs::new(test_utils::TestScorer::with_penalty(0), &inflight_htlcs),
+			&[42; 32]
+		)
+	}
+	fn notify_payment_path_failed(&self, _path: &[&RouteHop], _short_channel_id: u64) {}
+	fn notify_payment_path_successful(&self, _path: &[&RouteHop]) {}
+	fn notify_payment_probe_successful(&self, _path: &[&RouteHop]) {}
+	fn notify_payment_probe_failed(&self, _path: &[&RouteHop], _short_channel_id: u64) {}
+}
+
 pub fn create_node_chanmgrs<'a, 'b>(
     node_count: usize,
     cfgs: &'a Vec<NodeCfg<'b>>,
@@ -1248,7 +1280,10 @@ pub fn create_node_chanmgrs<'a, 'b>(
         &'a TestChainMonitor<'b>,
         &'b TestBroadcaster,
         &'a LoopbackSignerKeysInterface,
+        &'a LoopbackSignerKeysInterface,
+        &'a LoopbackSignerKeysInterface,
         &'b test_utils::TestFeeEstimator,
+        Arc<TestRouter>,
         Arc<test_utils::TestLogger>,
     >,
 > {
@@ -1259,7 +1294,18 @@ pub fn create_node_chanmgrs<'a, 'b>(
             network,
             best_block: BestBlock::from_genesis(network),
         };
-        let node = ChannelManager::new(cfgs[i].fee_estimator, &cfgs[i].chain_monitor, cfgs[i].tx_broadcaster, Arc::clone(&cfgs[i].logger), &cfgs[i].keys_manager, if node_config[i].is_some() { node_config[i].clone().unwrap() } else { test_default_channel_config() }, params);
+        let config = if node_config[i].is_some() { node_config[i].clone().unwrap() } else { test_default_channel_config() };
+        let router = Arc::new(TestRouter::new(cfgs[i].network_graph.clone()));
+        let node = ChannelManager::new(cfgs[i].fee_estimator,
+                                       &cfgs[i].chain_monitor,
+                                       cfgs[i].tx_broadcaster,
+                                       router,
+                                       Arc::clone(&cfgs[i].logger),
+                                       &cfgs[i].keys_manager,
+                                       &cfgs[i].keys_manager,
+                                       &cfgs[i].keys_manager,
+                                       config,
+                                       params);
         chanmgrs.push(node);
     }
 
@@ -1274,7 +1320,10 @@ pub fn create_network<'a, 'b: 'a, 'c: 'b>(
             &'b TestChainMonitor<'c>,
             &'c TestBroadcaster,
             &'b LoopbackSignerKeysInterface,
+            &'b LoopbackSignerKeysInterface,
+            &'b LoopbackSignerKeysInterface,
             &'c test_utils::TestFeeEstimator,
+            Arc<TestRouter>,
             Arc<test_utils::TestLogger>,
         >,
     >,
@@ -1285,7 +1334,7 @@ pub fn create_network<'a, 'b: 'a, 'c: 'b>(
 
     for i in 0..node_count {
         info!("node {} {}", i, chan_mgrs[i].get_our_node_id().to_hex());
-        let net_graph_msg_handler = P2PGossipSync::new(cfgs[i].network_graph, None, Arc::clone(&cfgs[i].logger));
+        let net_graph_msg_handler = P2PGossipSync::new(cfgs[i].network_graph.clone(), None, Arc::clone(&cfgs[i].logger));
         let connect_style = Rc::new(RefCell::new(ConnectStyle::FullBlockViaListen));
         nodes.push(Node {
             chain_source: cfgs[i].chain_source,
@@ -1293,7 +1342,7 @@ pub fn create_network<'a, 'b: 'a, 'c: 'b>(
             chain_monitor: &cfgs[i].chain_monitor,
             keys_manager: &cfgs[i].keys_manager,
             node: &chan_mgrs[i],
-            network_graph: cfgs[i].network_graph,
+            network_graph: cfgs[i].network_graph.clone(),
             gossip_sync: net_graph_msg_handler,
             node_seed: cfgs[i].node_seed,
             network_chan_count: chan_count.clone(),
@@ -1307,7 +1356,7 @@ pub fn create_network<'a, 'b: 'a, 'c: 'b>(
 
     for i in 0..node_count {
         for j in (i+1)..node_count {
-            let init = msgs::Init { features: channelmanager::provided_init_features(), remote_network_address: None };
+            let init = msgs::Init { features: channelmanager::provided_init_features(&UserConfig::default()), remote_network_address: None };
             nodes[i].node.peer_connected(&nodes[j].node.get_our_node_id(), &init).unwrap();
             nodes[j].node.peer_connected(&nodes[i].node.get_our_node_id(), &init).unwrap();
         }

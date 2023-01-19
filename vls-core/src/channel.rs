@@ -9,7 +9,7 @@ use bitcoin::secp256k1::{self, ecdsa::Signature, All, Message, PublicKey, Secp25
 use bitcoin::util::sighash::SighashCache;
 use bitcoin::{EcdsaSighashType, Network, OutPoint, Script, Transaction};
 use lightning::chain;
-use lightning::chain::keysinterface::{BaseSign, InMemorySigner, KeysInterface};
+use lightning::chain::keysinterface::{BaseSign, InMemorySigner, SignerProvider};
 use lightning::ln::chan_utils::{
     build_htlc_transaction, derive_private_key, derive_public_revocation_key,
     get_htlc_redeemscript, make_funding_redeemscript, ChannelPublicKeys,
@@ -314,10 +314,8 @@ impl ChannelStub {
     pub(crate) fn channel_keys_with_channel_value(&self, channel_value_sat: u64) -> InMemorySigner {
         let secp_ctx = Secp256k1::signing_only();
         let keys = &self.keys;
-        let node_secret = self.node.upgrade().unwrap().get_node_secret();
         InMemorySigner::new(
             &secp_ctx,
-            node_secret,
             keys.funding_key,
             keys.revocation_base_key,
             keys.payment_key,
@@ -1431,7 +1429,11 @@ impl Channel {
     }
 
     /// Sign a channel announcement with both the node key and the funding key
-    pub fn sign_channel_announcement(&self, announcement: &[u8]) -> (Signature, Signature) {
+    // FIXME return just funding sig?
+    pub fn sign_channel_announcement_with_funding_key(
+        &self,
+        announcement: &[u8],
+    ) -> (Signature, Signature) {
         let ann_hash = Sha256dHash::hash(announcement);
         let encmsg = secp256k1::Message::from_slice(&ann_hash[..]).expect("encmsg failed");
 

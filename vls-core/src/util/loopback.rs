@@ -10,13 +10,14 @@ use bitcoin::secp256k1::{All, PublicKey, Scalar, Secp256k1, SecretKey};
 use bitcoin::util::psbt::serialize::Serialize;
 use bitcoin::{Script, Transaction, TxOut};
 use lightning::chain::keysinterface::{
-    BaseSign, KeyMaterial, KeysInterface, Recipient, Sign, SpendableOutputDescriptor,
+    BaseSign, EntropySource, KeyMaterial, NodeSigner, Recipient, Sign, SignerProvider,
+    SpendableOutputDescriptor,
 };
 use lightning::ln::chan_utils::{
     ChannelPublicKeys, ChannelTransactionParameters, ClosingTransaction, CommitmentTransaction,
     HTLCOutputInCommitment, HolderCommitmentTransaction, TxCreationKeys,
 };
-use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement};
+use lightning::ln::msgs::{DecodeError, UnsignedChannelAnnouncement, UnsignedGossipMessage};
 use lightning::ln::script::ShutdownScript;
 use lightning::ln::{chan_utils, PaymentPreimage};
 use lightning::util::ser::{Readable, Writeable, Writer};
@@ -35,7 +36,7 @@ use crate::util::status::Status;
 use crate::util::INITIAL_COMMITMENT_NUMBER;
 use crate::Arc;
 
-/// Adapt MySigner to KeysInterface
+/// Adapt MySigner to NodeSigner
 pub struct LoopbackSignerKeysInterface {
     pub node_id: PublicKey,
     pub signer: Arc<MultiSigner>,
@@ -65,6 +66,13 @@ impl LoopbackSignerKeysInterface {
             feerate_sat_per_1000_weight,
             secp_ctx,
         )
+    }
+
+    fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
+        match recipient {
+            Recipient::Node => Ok(self.get_node().get_node_secret()),
+            Recipient::PhantomNode => Err(()),
+        }
     }
 }
 
@@ -488,20 +496,20 @@ impl BaseSign for LoopbackChannelSigner {
         todo!()
     }
 
-    fn sign_channel_announcement(
+    fn sign_channel_announcement_with_funding_key(
         &self,
         msg: &UnsignedChannelAnnouncement,
         _secp_ctx: &Secp256k1<All>,
-    ) -> Result<(Signature, Signature), ()> {
+    ) -> Result<Signature, ()> {
         info!("sign_counterparty_commitment {:?} {:?}", self.node_id, self.channel_id);
 
         let (nsig, bsig) = self
             .signer
             .with_ready_channel(&self.node_id, &self.channel_id, |chan| {
-                Ok(chan.sign_channel_announcement(&msg.encode()))
+                Ok(chan.sign_channel_announcement_with_funding_key(&msg.encode()))
             })
             .map_err(|s| self.bad_status(s))?;
-        Ok((nsig, bsig))
+        Ok(bsig)
     }
 
     fn provide_channel_parameters(&mut self, parameters: &ChannelTransactionParameters) {
@@ -532,29 +540,8 @@ impl BaseSign for LoopbackChannelSigner {
 
 impl Sign for LoopbackChannelSigner {}
 
-impl KeysInterface for LoopbackSignerKeysInterface {
+impl SignerProvider for LoopbackSignerKeysInterface {
     type Signer = LoopbackChannelSigner;
-
-    // TODO secret key leaking
-    fn get_node_secret(&self, recipient: Recipient) -> Result<SecretKey, ()> {
-        match recipient {
-            Recipient::Node => Ok(self.get_node().get_node_secret()),
-            Recipient::PhantomNode => Err(()),
-        }
-    }
-
-    fn ecdh(
-        &self,
-        recipient: Recipient,
-        other_key: &PublicKey,
-        tweak: Option<&Scalar>,
-    ) -> Result<SharedSecret, ()> {
-        let mut node_secret = self.get_node_secret(recipient)?;
-        if let Some(tweak) = tweak {
-            node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
-        }
-        Ok(SharedSecret::new(other_key, &node_secret))
-    }
 
     fn get_destination_script(&self) -> Script {
         let secp_ctx = Secp256k1::signing_only();
@@ -593,10 +580,6 @@ impl KeysInterface for LoopbackSignerKeysInterface {
         )
     }
 
-    fn get_secure_random_bytes(&self) -> [u8; 32] {
-        self.get_node().get_secure_random_bytes()
-    }
-
     fn read_chan_signer(&self, mut reader: &[u8]) -> Result<Self::Signer, DecodeError> {
         let channel_id = ChannelId::new(&Vec::read(&mut reader)?);
         let channel_value_sat = Readable::read(&mut reader)?;
@@ -606,6 +589,39 @@ impl KeysInterface for LoopbackSignerKeysInterface {
             Arc::clone(&self.signer),
             channel_value_sat,
         ))
+    }
+}
+
+impl EntropySource for LoopbackSignerKeysInterface {
+    fn get_secure_random_bytes(&self) -> [u8; 32] {
+        self.get_node().get_secure_random_bytes()
+    }
+}
+
+impl NodeSigner for LoopbackSignerKeysInterface {
+    fn get_node_id(&self, recipient: Recipient) -> Result<PublicKey, ()> {
+        let node_secret = self.get_node_secret(recipient)?;
+
+        Ok(PublicKey::from_secret_key(&Secp256k1::signing_only(), &node_secret))
+    }
+
+    fn sign_gossip_message(&self, msg: UnsignedGossipMessage) -> Result<Signature, ()> {
+        let node = self.get_node();
+        let sig = node.sign_gossip_message(&msg).expect("sign_gossip_message");
+        Ok(sig)
+    }
+
+    fn ecdh(
+        &self,
+        recipient: Recipient,
+        other_key: &PublicKey,
+        tweak: Option<&Scalar>,
+    ) -> Result<SharedSecret, ()> {
+        let mut node_secret = self.get_node_secret(recipient)?;
+        if let Some(tweak) = tweak {
+            node_secret = node_secret.mul_tweak(tweak).map_err(|_| ())?;
+        }
+        Ok(SharedSecret::new(other_key, &node_secret))
     }
 
     fn sign_invoice(
